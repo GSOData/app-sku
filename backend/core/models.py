@@ -318,6 +318,17 @@ class SKU(BaseModel):
         ).aggregate(total=Sum('quantidade'))['total']
         return total or 0
 
+    @property
+    def valor_total_estoque(self) -> float:
+        """
+        Retorna o valor total do estoque baseado em qtd * custo_unitario de cada lote.
+        """
+        from django.db.models import Sum, F
+        total = self.lotes.filter(ativo=True).aggregate(
+            total=Sum(F('qtd_estoque') * F('custo_unitario'))
+        )['total']
+        return float(total) if total else 0.0
+
     def get_status(self, config: 'ConfiguracaoAlerta' = None) -> dict:
         """
         Calcula o status do SKU baseado no lote mais próximo do vencimento.

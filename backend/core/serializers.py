@@ -360,6 +360,7 @@ class SKUListSerializer(serializers.ModelSerializer):
     status_texto = serializers.SerializerMethodField()
     status_cor = serializers.SerializerMethodField()
     quantidade_total = serializers.SerializerMethodField()
+    valor_estoque = serializers.SerializerMethodField()
     imagem_url = serializers.SerializerMethodField()
     
     class Meta:
@@ -374,6 +375,7 @@ class SKUListSerializer(serializers.ModelSerializer):
             'status_texto',
             'status_cor',
             'quantidade_total',
+            'valor_estoque',
             'imagem_url',
         ]
     
@@ -389,6 +391,10 @@ class SKUListSerializer(serializers.ModelSerializer):
     
     def get_quantidade_total(self, obj) -> int:
         return obj.quantidade_total_estoque
+    
+    def get_valor_estoque(self, obj) -> float:
+        """Retorna o valor total do estoque (qtd * custo)."""
+        return obj.valor_total_estoque
     
     def get_imagem_url(self, obj) -> str | None:
         if obj.imagem:

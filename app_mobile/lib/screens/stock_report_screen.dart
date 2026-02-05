@@ -62,9 +62,8 @@ class _StockReportScreenState extends State<StockReportScreen> {
       for (final sku in skus) {
         totalQtd += sku.quantidadeTotal;
 
-        // Valor fictício: R$ 15-150 baseado no código SKU (para demonstração)
-        final precoUnitario = 15.0 + (sku.codigoSku.hashCode.abs() % 135);
-        valorTotal += sku.quantidadeTotal * precoUnitario;
+        // Usa o valor real do estoque calculado no backend
+        valorTotal += sku.valorEstoque;
 
         if (sku.statusTexto.toLowerCase() == 'vencido') {
           vencidosCount++;
@@ -240,7 +239,7 @@ class _StockReportScreenState extends State<StockReportScreen> {
           // Segunda linha: Valor Total
           _buildMetricCard(
             icon: Icons.attach_money,
-            title: 'Valor Total Estimado',
+            title: 'Valor Total em Estoque',
             value: _currencyFormat.format(_valorTotalEstoque),
             color: AppColors.success,
             isLarge: true,

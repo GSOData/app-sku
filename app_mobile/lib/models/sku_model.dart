@@ -62,6 +62,7 @@ class Sku {
   final String? imagemUrl;
   final int quantidadeTotal;
   final int quantidadeTransito;
+  final double valorEstoque;
   final LoteResumo? loteMaisProximo;
   final String statusTexto;
   final String statusCor;
@@ -79,6 +80,7 @@ class Sku {
     this.imagemUrl,
     this.quantidadeTotal = 0,
     this.quantidadeTransito = 0,
+    this.valorEstoque = 0.0,
     this.loteMaisProximo,
     this.statusTexto = 'Indefinido',
     this.statusCor = '#9E9E9E',
@@ -100,6 +102,7 @@ class Sku {
       imagemUrl: json['imagem_url'],
       quantidadeTotal: json['quantidade_total'] ?? 0,
       quantidadeTransito: json['quantidade_transito'] ?? 0,
+      valorEstoque: (json['valor_estoque'] ?? 0).toDouble(),
       loteMaisProximo: json['lote_mais_proximo'] != null
           ? LoteResumo.fromJson(json['lote_mais_proximo'])
           : null,
