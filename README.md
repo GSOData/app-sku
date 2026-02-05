@@ -29,9 +29,8 @@ O **SKU+** coloca o controle na palma da mão de conferentes e gestores:
 ## 📱 Screenshots
 
 <div align="center">
-  <img src="\screenshots\login.jpg\" width="200" alt="Tela de Login" />
-  <img src="\screenshots\home.jpg\" width="200" alt="Dashboard" />
-  <img src="https://placehold.co/200x400?text=Lista" width="200" alt="Listagem" />
+  <img src="screenshots/login.jpg" width="200" alt="Tela de Login" style="margin-right: 10px;" />
+  <img src="screenshots/home.jpg" width="200" alt="Dashboard" />
 </div>
 
 ---
@@ -64,6 +63,7 @@ O backend encontra-se deployado e ativo no Render:
 ```bash
 git clone [https://github.com/GSOData/app-sku.git](https://github.com/GSOData/app-sku.git)
 cd app-sku
+```
 
 ---
 
