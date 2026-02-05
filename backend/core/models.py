@@ -216,12 +216,9 @@ class SKU(BaseModel):
     """
     UNIDADE_MEDIDA_CHOICES = [
         ('UN', 'Unidade'),
-        ('KG', 'Quilograma'),
-        ('L', 'Litro'),
         ('CX', 'Caixa'),
-        ('PC', 'Pacote'),
+        ('PCT', 'Pacote'),
         ('FD', 'Fardo'),
-        ('M', 'Metro'),
     ]
 
     def produto_image_path(instance, filename):

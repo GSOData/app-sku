@@ -342,15 +342,11 @@ class _SkuListScreenState extends State<SkuListScreen> {
                     // Quantidade e Status
                     Row(
                       children: [
-                        // Quantidade
-                        Icon(
-                          Icons.inventory,
-                          size: 14,
-                          color: AppColors.textSecondary,
-                        ),
+                        // Ícone da unidade de medida
+                        _getUnidadeMedidaIcon(sku.unidadeMedida, size: 14),
                         const SizedBox(width: 4),
                         Text(
-                          'Qtd: ${sku.quantidadeTotal}',
+                          'Qtd: ${sku.quantidadeTotal} ${sku.unidadeMedida ?? ''}',
                           style: GoogleFonts.poppins(
                             fontSize: AppFontSizes.caption,
                             color: AppColors.textSecondary,
@@ -416,16 +412,19 @@ class _SkuListScreenState extends State<SkuListScreen> {
   }
 
   Widget _buildDefaultIcon(Sku sku) {
+    final iconData = _getUnidadeMedidaIconData(sku.unidadeMedida);
+    final iconColor = _getUnidadeMedidaColor(sku.unidadeMedida);
+    
     return Container(
       width: 56,
       height: 56,
       decoration: BoxDecoration(
-        color: AppColors.primary.withAlpha(26),
+        color: iconColor.withAlpha(26),
         borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
       child: Icon(
-        Icons.inventory_2_outlined,
-        color: AppColors.primary,
+        iconData,
+        color: iconColor,
         size: 28,
       ),
     );
@@ -453,6 +452,47 @@ class _SkuListScreenState extends State<SkuListScreen> {
           color: sku.statusColor,
         ),
       ),
+    );
+  }
+
+  /// Retorna o IconData baseado na unidade de medida
+  IconData _getUnidadeMedidaIconData(String? unidade) {
+    switch (unidade?.toUpperCase()) {
+      case 'CX':
+        return Icons.inbox_outlined;
+      case 'PCT':
+        return Icons.shopping_bag_outlined;
+      case 'FD':
+        return Icons.grid_view;
+      case 'UN':
+        return Icons.extension_outlined;
+      default:
+        return Icons.inventory_2_outlined;
+    }
+  }
+
+  /// Retorna a cor baseada na unidade de medida
+  Color _getUnidadeMedidaColor(String? unidade) {
+    switch (unidade?.toUpperCase()) {
+      case 'CX':
+        return Colors.brown;
+      case 'PCT':
+        return Colors.blue;
+      case 'FD':
+        return Colors.orange;
+      case 'UN':
+        return Colors.purple;
+      default:
+        return AppColors.primary;
+    }
+  }
+
+  /// Widget helper que retorna o ícone com a cor da unidade de medida
+  Widget _getUnidadeMedidaIcon(String? unidade, {double size = 24}) {
+    return Icon(
+      _getUnidadeMedidaIconData(unidade),
+      color: _getUnidadeMedidaColor(unidade),
+      size: size,
     );
   }
 }

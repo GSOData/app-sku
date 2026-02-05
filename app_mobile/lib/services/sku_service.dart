@@ -4,7 +4,6 @@ import 'package:http/http.dart' as http;
 import '../models/sku_model.dart';
 import '../utils/constants.dart';
 import 'auth_service.dart';
-import 'package:app_mobile/utils/constants.dart';
 
 /// Resultado paginado da API
 class PaginatedResult<T> {
