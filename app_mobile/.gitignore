@@ -1,0 +1,67 @@
+# ==========================
+# 🐍 PYTHON / DJANGO (CRÍTICO)
+# ==========================
+# Ambiente Virtual (NUNCA suba isso)
+venv/
+env/
+.env
+.venv/
+
+# Banco de Dados Local
+db.sqlite3
+db.sqlite3-journal
+
+# Python Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Arquivos Estáticos (Gerados pelo collectstatic)
+staticfiles/
+/media/
+
+# ==========================
+# 📱 FLUTTER / DART
+# ==========================
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+
+# ==========================
+# 🤖 ANDROID
+# ==========================
+# Configurações locais da sua máquina (SDK path)
+android/local.properties
+
+# Pastas de build e cache do Gradle
+android/.gradle
+android/app/build/
+android/app/release/
+android/app/debug/
+android/app/profile/
+
+# Arquivos gerados
+android/app/src/main/assets/
+
+# ==========================
+# 🍎 iOS
+# ==========================
+ios/Flutter/App.framework
+ios/Flutter/Flutter.framework
+ios/Flutter/Generated.xcconfig
+ios/Flutter/app.flx
+ios/Flutter/app.zip
+ios/Flutter/flutter_assets/
+ios/.generated/
+
+# ==========================
+# 🛠 IDEs & SISTEMA
+# ==========================
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
