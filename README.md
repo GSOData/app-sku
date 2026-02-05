@@ -29,8 +29,8 @@ O **SKU+** coloca o controle na palma da mão de conferentes e gestores:
 ## 📱 Screenshots
 
 <div align="center">
-  <img src="screenshots/login.jpg" width="200" alt="Tela de Login" style="margin-right: 10px;" />
-  <img src="screenshots/home.jpg" width="200" alt="Dashboard" />
+  <img src="screenshots/login.jpeg" width="200" alt="Tela de Login" style="margin-right: 10px;" />
+  <img src="screenshots/home.jpeg" width="200" alt="Dashboard" />
 </div>
 
 ---
