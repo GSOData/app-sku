@@ -370,6 +370,7 @@ class SKUListSerializer(serializers.ModelSerializer):
             'nome_produto',
             'unidade_codigo',
             'categoria',
+            'unidade_medida',
             'status_texto',
             'status_cor',
             'quantidade_total',
