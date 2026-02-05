@@ -459,13 +459,13 @@ class _SkuListScreenState extends State<SkuListScreen> {
   IconData _getUnidadeMedidaIconData(String? unidade) {
     switch (unidade?.toUpperCase()) {
       case 'CX':
-        return Icons.inbox_outlined;
+        return Icons.inventory_2_outlined;  // Caixa 3D
       case 'PCT':
-        return Icons.shopping_bag_outlined;
+        return Icons.inbox_outlined;        // Pacote
       case 'FD':
-        return Icons.grid_view;
+        return Icons.grid_view;             // Fardo (grade)
       case 'UN':
-        return Icons.extension_outlined;
+        return Icons.local_drink_outlined;  // Garrafa
       default:
         return Icons.inventory_2_outlined;
     }
