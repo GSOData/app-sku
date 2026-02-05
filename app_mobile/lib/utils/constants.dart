@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 
 class Constants {
   /// URL base da API
-  /// Alterado para o seu IP local para funcionar no celular físico via Wi-Fi
-  static const String apiUrl = 'http://192.168.15.52:8000/api/';
+  static const String apiUrl = 'https://app-sku-api.onrender.com/api/';
 }
 
 /// Chaves para SharedPreferences
