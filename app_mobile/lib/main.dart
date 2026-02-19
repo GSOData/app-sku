@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -6,24 +7,27 @@ import 'package:google_fonts/google_fonts.dart';
 import 'services/auth_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/web/web_dashboard_screen.dart';
 import 'utils/constants.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Define orientação preferida (apenas retrato)
-  SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
+  // Define orientação preferida (apenas retrato) - somente em mobile
+  if (!kIsWeb) {
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
 
-  // Define estilo da barra de status
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
-    ),
-  );
+    // Define estilo da barra de status
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+      ),
+    );
+  }
 
   runApp(const SkuPlusApp());
 }
@@ -191,8 +195,15 @@ class _SplashScreenState extends State<SplashScreen> {
 
     // Navega para a tela apropriada
     if (authService.isAuthenticated) {
+      // Verifica se é Web/Desktop para redirecionar ao Dashboard Web
+      final isWebLayout = kIsWeb || MediaQuery.of(context).size.width >= 800;
+      
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(
+          builder: (_) => isWebLayout 
+              ? const WebDashboardScreen() 
+              : const HomeScreen(),
+        ),
       );
     } else {
       Navigator.of(context).pushReplacement(
