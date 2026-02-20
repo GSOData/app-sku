@@ -700,3 +700,144 @@ class LogConsultaViewSet(viewsets.ReadOnlyModelViewSet):
         if not self.request.user.is_superuser:
             return LogConsulta.objects.filter(usuario=self.request.user)
         return super().get_queryset()
+
+
+# =============================================================================
+# UPLOAD DE ARQUIVOS
+# =============================================================================
+class UploadEstoqueView(APIView):
+    """
+    POST /api/upload/grade-020502/
+    
+    Upload de planilha de Grade 020502 (Estoque Total Diário).
+    
+    Form data:
+    - file: arquivo .xlsx, .xls ou .csv
+    - unidade_negocio_id: ID da unidade de negócio
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        from .services import EstoqueImportService
+        
+        file = request.FILES.get('file')
+        unidade_negocio_id = request.data.get('unidade_negocio_id')
+        
+        if not file:
+            return Response(
+                {'error': 'Arquivo não enviado'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not unidade_negocio_id:
+            return Response(
+                {'error': 'Unidade de negócio não informada'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Verifica extensão do arquivo
+        allowed_extensions = ['.xlsx', '.xls', '.csv']
+        file_ext = '.' + file.name.split('.')[-1].lower()
+        if file_ext not in allowed_extensions:
+            return Response(
+                {'error': f'Formato não permitido. Use: {", ".join(allowed_extensions)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Verifica acesso à unidade
+        user = request.user
+        if not user.is_superuser:
+            if not user.tem_acesso_unidade(int(unidade_negocio_id)):
+                return Response(
+                    {'error': 'Sem permissão para esta unidade'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        try:
+            service = EstoqueImportService(int(unidade_negocio_id))
+            result = service.processar_grade_020502(file)
+            
+            if result.get('success'):
+                return Response(result, status=status.HTTP_200_OK)
+            else:
+                return Response(result, status=status.HTTP_400_BAD_REQUEST)
+                
+        except UnidadeNegocio.DoesNotExist:
+            return Response(
+                {'error': 'Unidade de negócio não encontrada'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Erro ao processar arquivo: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class UploadContagensView(APIView):
+    """
+    POST /api/upload/contagens/
+    
+    Upload de planilha de Contagens (Conciliação de Validades).
+    
+    Form data:
+    - file: arquivo .xlsx, .xls ou .csv
+    - unidade_negocio_id: ID da unidade de negócio
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        from .services import EstoqueImportService
+        
+        file = request.FILES.get('file')
+        unidade_negocio_id = request.data.get('unidade_negocio_id')
+        
+        if not file:
+            return Response(
+                {'error': 'Arquivo não enviado'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not unidade_negocio_id:
+            return Response(
+                {'error': 'Unidade de negócio não informada'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Verifica extensão do arquivo
+        allowed_extensions = ['.xlsx', '.xls', '.csv']
+        file_ext = '.' + file.name.split('.')[-1].lower()
+        if file_ext not in allowed_extensions:
+            return Response(
+                {'error': f'Formato não permitido. Use: {", ".join(allowed_extensions)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Verifica acesso à unidade
+        user = request.user
+        if not user.is_superuser:
+            if not user.tem_acesso_unidade(int(unidade_negocio_id)):
+                return Response(
+                    {'error': 'Sem permissão para esta unidade'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        try:
+            service = EstoqueImportService(int(unidade_negocio_id))
+            result = service.processar_contagens(file)
+            
+            if result.get('success'):
+                return Response(result, status=status.HTTP_200_OK)
+            else:
+                return Response(result, status=status.HTTP_400_BAD_REQUEST)
+                
+        except UnidadeNegocio.DoesNotExist:
+            return Response(
+                {'error': 'Unidade de negócio não encontrada'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Erro ao processar arquivo: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

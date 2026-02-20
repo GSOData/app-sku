@@ -32,6 +32,8 @@ from .views import (
     LogConsultaViewSet,
     # APIViews
     RelatorioCriticidadeView,
+    UploadEstoqueView,
+    UploadContagensView,
 )
 
 app_name = 'core'
@@ -60,6 +62,10 @@ urlpatterns = [
     
     # Relatório de Criticidade (endpoint customizado)
     path('relatorio-criticidade/', RelatorioCriticidadeView.as_view(), name='relatorio-criticidade'),
+    
+    # Upload de arquivos
+    path('upload/grade-020502/', UploadEstoqueView.as_view(), name='upload-grade'),
+    path('upload/contagens/', UploadContagensView.as_view(), name='upload-contagens'),
     
     # ViewSets (router)
     path('', include(router.urls)),

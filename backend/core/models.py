@@ -214,12 +214,6 @@ class SKU(BaseModel):
     Representa um produto (Stock Keeping Unit).
     Um SKU pertence a uma unidade de negócio e pode ter múltiplos lotes.
     """
-    UNIDADE_MEDIDA_CHOICES = [
-        ('UN', 'Unidade'),
-        ('CX', 'Caixa'),
-        ('PCT', 'Pacote'),
-        ('FD', 'Fardo'),
-    ]
 
     def produto_image_path(instance, filename):
         """Gera path para upload: media/produtos/<codigo_sku>/<filename>"""
@@ -253,9 +247,15 @@ class SKU(BaseModel):
     )
     unidade_medida = models.CharField(
         'Unidade de Medida',
-        max_length=5,
-        choices=UNIDADE_MEDIDA_CHOICES,
-        default='UN'
+        max_length=20,
+        default='UN',
+        help_text='Unidade flexível (UN, CX, FD, DZ, PCT, etc.)'
+    )
+    fator_conversao = models.PositiveIntegerField(
+        'Fator de Conversão',
+        default=1,
+        validators=[MinValueValidator(1)],
+        help_text='Quantidade de unidades por caixa/fardo'
     )
     descricao = models.TextField(
         'Descrição',
@@ -288,10 +288,12 @@ class SKU(BaseModel):
         """
         Retorna o lote com data de validade mais próxima (FEFO).
         Considera apenas lotes ativos com estoque > 0.
+        Ignora lotes sem data de validade.
         """
         return self.lotes.filter(
             ativo=True,
-            qtd_estoque__gt=0
+            qtd_estoque__gt=0,
+            data_validade__isnull=False
         ).order_by('data_validade').first()
 
     @property
@@ -400,6 +402,8 @@ class LoteValidade(BaseModel):
     """
     Representa um lote de um SKU com controle de validade.
     Segue a lógica FEFO (First Expired, First Out).
+    
+    data_validade pode ser None para estoque base sem validade definida.
     """
     sku = models.ForeignKey(
         SKU,
@@ -414,7 +418,10 @@ class LoteValidade(BaseModel):
     )
     data_validade = models.DateField(
         'Data de Validade',
-        db_index=True
+        db_index=True,
+        null=True,
+        blank=True,
+        help_text='Pode ser nulo para estoque base sem validade definida'
     )
     data_fabricacao = models.DateField(
         'Data de Fabricação',
@@ -425,6 +432,13 @@ class LoteValidade(BaseModel):
         'Quantidade em Estoque',
         default=0,
         validators=[MinValueValidator(0)]
+    )
+    estoque_display = models.CharField(
+        'Estoque Original (Display)',
+        max_length=50,
+        blank=True,
+        null=True,
+        help_text='Texto original da planilha ex: 388/06'
     )
     localizacao = models.CharField(
         'Localização',
@@ -459,19 +473,28 @@ class LoteValidade(BaseModel):
         ]
 
     def __str__(self):
-        return f'{self.sku.codigo_sku} - Lote {self.numero_lote} (Val: {self.data_validade})'
+        val_str = self.data_validade.strftime('%d/%m/%Y') if self.data_validade else 'Sem validade'
+        return f'{self.sku.codigo_sku} - Lote {self.numero_lote} (Val: {val_str})'
 
     @property
-    def dias_ate_vencimento(self) -> int:
+    def dias_ate_vencimento(self):
         """
         Retorna quantidade de dias até o vencimento.
         Valores negativos indicam produto vencido.
+        Retorna None se não houver data de validade.
         """
+        if self.data_validade is None:
+            return None
         return (self.data_validade - date.today()).days
 
     @property
     def esta_vencido(self) -> bool:
-        """Verifica se o lote está vencido."""
+        """
+        Verifica se o lote está vencido.
+        Retorna False se não houver data de validade.
+        """
+        if self.data_validade is None:
+            return False
         return self.data_validade < date.today()
 
 
