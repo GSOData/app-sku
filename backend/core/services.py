@@ -279,9 +279,16 @@ class EstoqueImportService:
             
             for idx, row in df.iterrows():
                 try:
-                    codigo_sku = str(row['codigo_sku']).strip()
-                    if not codigo_sku or codigo_sku == 'nan':
+                    # 1. CORREÇÃO DO CÓDIGO (Remove .0 do final se existir)
+                    raw_codigo = str(row['codigo_sku']).strip()
+                    if not raw_codigo or raw_codigo == 'nan':
                         continue
+                    
+                    # Converte "1388.0" para "1388"
+                    if raw_codigo.endswith('.0'):
+                        codigo_sku = raw_codigo[:-2]
+                    else:
+                        codigo_sku = raw_codigo
                     
                     # Busca SKU existente
                     try:
@@ -292,15 +299,15 @@ class EstoqueImportService:
                         )
                     except SKU.DoesNotExist:
                         self.warnings.append(
-                            f"Linha {idx + 2}: SKU '{codigo_sku}' não encontrado"
+                            f"Linha {idx + 2}: SKU '{codigo_sku}' não encontrado no Estoque Total"
                         )
                         continue
                     
-                    # Parseia data de validade
+                    # 2. PARSEIA DATA DE VALIDADE
                     data_validade = self._parse_date(row['data_validade'])
                     if data_validade is None:
                         self.warnings.append(
-                            f"Linha {idx + 2}: Data de validade inválida para SKU '{codigo_sku}'"
+                            f"Linha {idx + 2}: Data de validade vazia ou inválida para SKU '{codigo_sku}'"
                         )
                         continue
                     
@@ -323,10 +330,9 @@ class EstoqueImportService:
                     )
                     
                     if not lote_created:
-                        # Soma à quantidade existente ou substitui (depende do requisito)
-                        # Por padrão, substituímos
+                        # Soma à quantidade existente ou substitui
                         lote.qtd_estoque = qtd_total
-                        lote.numero_lote = numero_lote  # Atualiza se necessário
+                        lote.numero_lote = numero_lote
                         lote.save()
                         self.updated_count += 1
                     else:

@@ -78,7 +78,8 @@ class _WebDashboardScreenState extends State<WebDashboardScreen> {
       builder: (context, constraints) {
         // Define número de colunas baseado na largura
         final crossAxisCount = constraints.maxWidth > 1200 ? 4 : 2;
-        final childAspectRatio = constraints.maxWidth > 1200 ? 2.2 : 1.8;
+        // Aspect ratio menor = cards mais altos
+        final childAspectRatio = constraints.maxWidth > 1200 ? 1.8 : 1.5;
 
         return GridView.count(
           crossAxisCount: crossAxisCount,
@@ -151,21 +152,20 @@ class _WebDashboardScreenState extends State<WebDashboardScreen> {
         side: BorderSide(color: AppColors.divider.withAlpha(128)),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
+        padding: const EdgeInsets.all(AppSpacing.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(AppSpacing.md),
+                  padding: const EdgeInsets.all(AppSpacing.sm),
                   decoration: BoxDecoration(
                     color: iconBgColor,
                     borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
-                  child: Icon(icon, color: iconColor, size: 24),
+                  child: Icon(icon, color: iconColor, size: 20),
                 ),
                 _buildTrendBadge(trend, trendValue),
               ],
@@ -174,12 +174,11 @@ class _WebDashboardScreenState extends State<WebDashboardScreen> {
             Text(
               value,
               style: GoogleFonts.poppins(
-                fontSize: AppFontSizes.headline,
+                fontSize: AppFontSizes.title,
                 fontWeight: FontWeight.bold,
                 color: AppColors.textPrimary,
               ),
             ),
-            const SizedBox(height: AppSpacing.xs),
             Text(
               title,
               style: GoogleFonts.poppins(
@@ -187,6 +186,8 @@ class _WebDashboardScreenState extends State<WebDashboardScreen> {
                 fontWeight: FontWeight.w500,
                 color: AppColors.textPrimary,
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
             Text(
               subtitle,
@@ -194,6 +195,8 @@ class _WebDashboardScreenState extends State<WebDashboardScreen> {
                 fontSize: AppFontSizes.caption,
                 color: AppColors.textSecondary,
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),

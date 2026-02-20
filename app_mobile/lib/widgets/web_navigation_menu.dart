@@ -166,19 +166,28 @@ class WebNavigationMenu extends StatelessWidget {
       child: Row(
         mainAxisAlignment: isCollapsed ? MainAxisAlignment.center : MainAxisAlignment.start,
         children: [
-          // Logo Icon
-          Container(
+          // Logo do App
+          Image.asset(
+            'assets/images/sku_logo.png',
             width: 44,
             height: 44,
-            decoration: BoxDecoration(
-              color: AppColors.onPrimary,
-              borderRadius: BorderRadius.circular(AppRadius.md),
-            ),
-            child: Icon(
-              Icons.inventory_2_rounded,
-              color: AppColors.primary,
-              size: 26,
-            ),
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) {
+              // Fallback caso a imagem não exista
+              return Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppColors.onPrimary,
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                ),
+                child: Icon(
+                  Icons.inventory_2_rounded,
+                  color: AppColors.primary,
+                  size: 26,
+                ),
+              );
+            },
           ),
 
           if (!isCollapsed) ...[

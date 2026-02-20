@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -7,6 +8,7 @@ import '../services/sku_service.dart';
 import '../utils/constants.dart';
 import 'login_screen.dart';
 import 'sku_detail_screen.dart';
+import 'web/web_dashboard_screen.dart';
 
 /// Tela de Itens em Criticidade - mostra apenas produtos vencidos ou críticos
 class CriticalItemsScreen extends StatefulWidget {
@@ -133,6 +135,8 @@ class _CriticalItemsScreenState extends State<CriticalItemsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final showBackButton = kIsWeb || Navigator.canPop(context);
+    
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -143,6 +147,21 @@ class _CriticalItemsScreenState extends State<CriticalItemsScreen> {
         backgroundColor: AppColors.error,
         foregroundColor: Colors.white,
         elevation: 0,
+        leading: showBackButton
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () {
+                  if (Navigator.canPop(context)) {
+                    Navigator.pop(context);
+                  } else {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (_) => const WebDashboardScreen()),
+                    );
+                  }
+                },
+              )
+            : null,
       ),
       body: Column(
         children: [

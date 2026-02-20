@@ -139,13 +139,21 @@ class _LoginScreenState extends State<LoginScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Limita a largura máxima na web
+    final isWideScreen = MediaQuery.of(context).size.width > 600;
+    
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(AppSpacing.lg),
-            child: _isLoggingIn ? _buildLoadingView() : _buildLoginForm(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: isWideScreen ? 450 : double.infinity,
+              ),
+              child: _isLoggingIn ? _buildLoadingView() : _buildLoginForm(),
+            ),
           ),
         ),
       ),
@@ -348,39 +356,30 @@ class _LoginScreenState extends State<LoginScreen>
   Widget _buildHeader() {
     return Column(
       children: [
-        // Ícone do App
-        Container(
-          width: 100,
-          height: 100,
-          decoration: BoxDecoration(
-            color: AppColors.primary,
-            borderRadius: BorderRadius.circular(AppRadius.xl),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primary.withAlpha(77),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
+        // Logo do App
+        Image.asset(
+          'assets/images/sku_logo.png',
+          height: 140,
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) {
+            // Fallback caso a imagem não exista
+            return Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                borderRadius: BorderRadius.circular(AppRadius.xl),
               ),
-            ],
-          ),
-          child: const Icon(
-            Icons.inventory_2_rounded,
-            size: 50,
-            color: AppColors.onPrimary,
-          ),
+              child: const Icon(
+                Icons.inventory_2_rounded,
+                size: 50,
+                color: AppColors.onPrimary,
+              ),
+            );
+          },
         ),
 
-        const SizedBox(height: AppSpacing.md),
-
-        // Nome do App
-        Text(
-          'SKU+',
-          style: GoogleFonts.poppins(
-            fontSize: AppFontSizes.display,
-            fontWeight: FontWeight.bold,
-            color: AppColors.primary,
-          ),
-        ),
+        const SizedBox(height: AppSpacing.sm),
 
         Text(
           'Gestão de Validade e Estoque',

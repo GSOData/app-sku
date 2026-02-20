@@ -220,34 +220,30 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Logo
-            Container(
-              width: 120,
+            // Logo do App
+            Image.asset(
+              'assets/images/sku_logo.png',
               height: 120,
-              decoration: BoxDecoration(
-                color: AppColors.onPrimary,
-                borderRadius: BorderRadius.circular(AppRadius.xl),
-              ),
-              child: Icon(
-                Icons.inventory_2_rounded,
-                size: 60,
-                color: AppColors.primary,
-              ),
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) {
+                // Fallback caso a imagem não exista
+                return Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    color: AppColors.onPrimary,
+                    borderRadius: BorderRadius.circular(AppRadius.xl),
+                  ),
+                  child: Icon(
+                    Icons.inventory_2_rounded,
+                    size: 60,
+                    color: AppColors.primary,
+                  ),
+                );
+              },
             ),
 
             const SizedBox(height: AppSpacing.lg),
-
-            // Nome do App
-            Text(
-              'SKU+',
-              style: GoogleFonts.poppins(
-                fontSize: 40,
-                fontWeight: FontWeight.bold,
-                color: AppColors.onPrimary,
-              ),
-            ),
-
-            const SizedBox(height: AppSpacing.xs),
 
             Text(
               'Gestão de Validade e Estoque',
