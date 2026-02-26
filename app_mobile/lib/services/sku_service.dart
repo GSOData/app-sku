@@ -41,7 +41,7 @@ class SkuService {
   /// Busca lista de SKUs com filtros
   /// 
   /// [query] - Termo de busca (codigo_sku ou nome_produto)
-  /// [unidadeId] - Filtrar por unidade de negócio
+  /// [unidadeId] - Filtrar por unidade de negócio (usa unidade ativa por padrão)
   /// [page] - Página da paginação
   Future<PaginatedResult<Sku>> getSkus({
     String? query,
@@ -49,6 +49,9 @@ class SkuService {
     int page = 1,
   }) async {
     try {
+      // Usa unidade ativa se não for passada explicitamente
+      final effectiveUnidadeId = unidadeId ?? authService.unidadeAtiva?.id;
+      
       // Monta URL com query parameters
       final queryParams = <String, String>{
         'page': page.toString(),
@@ -58,8 +61,9 @@ class SkuService {
         queryParams['search'] = query;
       }
 
-      if (unidadeId != null) {
-        queryParams['unidade_id'] = unidadeId.toString();
+      // Sempre envia unidade_id (obrigatório no backend)
+      if (effectiveUnidadeId != null) {
+        queryParams['unidade_id'] = effectiveUnidadeId.toString();
       }
 
       final uri = Uri.parse('${Constants.apiUrl}skus/').replace(queryParameters: queryParams);
@@ -163,12 +167,16 @@ class SkuService {
     int? unidadeId,
   }) async {
     try {
+      // Usa unidade ativa se não for passada explicitamente
+      final effectiveUnidadeId = unidadeId ?? authService.unidadeAtiva?.id;
+      
       final queryParams = <String, String>{
         'search': search,
       };
 
-      if (unidadeId != null) {
-        queryParams['unidade_id'] = unidadeId.toString();
+      // Sempre envia unidade_id (obrigatório no backend)
+      if (effectiveUnidadeId != null) {
+        queryParams['unidade_id'] = effectiveUnidadeId.toString();
       }
 
       final uri = Uri.parse('${Constants.apiUrl}skus/consulta_validade/')

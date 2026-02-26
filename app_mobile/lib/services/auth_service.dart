@@ -4,6 +4,46 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:app_mobile/utils/constants.dart';
 
+/// Modelo de Unidade de Negócio
+class UnidadeNegocio {
+  final int id;
+  final String codigoUnb;
+  final String nome;
+
+  UnidadeNegocio({
+    required this.id,
+    required this.codigoUnb,
+    required this.nome,
+  });
+
+  factory UnidadeNegocio.fromJson(Map<String, dynamic> json) {
+    return UnidadeNegocio(
+      id: json['id'] ?? 0,
+      codigoUnb: json['codigo_unb'] ?? '',
+      nome: json['nome'] ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'codigo_unb': codigoUnb,
+      'nome': nome,
+    };
+  }
+
+  @override
+  String toString() => '$codigoUnb - $nome';
+  
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UnidadeNegocio && runtimeType == other.runtimeType && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
+}
+
 /// Modelo do usuário autenticado
 class Usuario {
   final int id;
@@ -57,6 +97,10 @@ class AuthService extends ChangeNotifier {
   String? _refreshToken;
   Usuario? _usuario;
   String? _errorMessage;
+  
+  // Multi-tenant: Unidade Ativa
+  UnidadeNegocio? _unidadeAtiva;
+  List<UnidadeNegocio> _unidadesPermitidas = [];
 
   // Getters
   bool get isLoading => _isLoading;
@@ -64,6 +108,16 @@ class AuthService extends ChangeNotifier {
   String? get accessToken => _accessToken;
   Usuario? get usuario => _usuario;
   String? get errorMessage => _errorMessage;
+  
+  // Getters Multi-tenant
+  UnidadeNegocio? get unidadeAtiva => _unidadeAtiva;
+  List<UnidadeNegocio> get unidadesPermitidas => _unidadesPermitidas;
+  bool get hasUnidadeAtiva => _unidadeAtiva != null;
+  
+  /// Query param para concatenar nas URLs de API
+  String get unidadeQueryParam => _unidadeAtiva != null 
+      ? 'unidade_id=${_unidadeAtiva!.id}' 
+      : '';
 
   /// Inicializa o serviço verificando se há token salvo
   Future<void> init() async {
@@ -92,6 +146,12 @@ class AuthService extends ChangeNotifier {
           final renewed = await _refreshAccessToken();
           _isAuthenticated = renewed;
         }
+        
+        // Carrega unidades permitidas e ativa
+        if (_isAuthenticated) {
+          await _loadUnidadesPermitidas();
+          await _loadUnidadeAtivaSalva(prefs);
+        }
       }
     } catch (e) {
       debugPrint('Erro ao inicializar AuthService: $e');
@@ -100,6 +160,92 @@ class AuthService extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
+  }
+  
+  /// Carrega unidades permitidas do backend ou do usuário
+  Future<void> _loadUnidadesPermitidas() async {
+    try {
+      // Primeiro tenta buscar do endpoint de unidades
+      final response = await http.get(
+        Uri.parse('${Constants.apiUrl}unidades/'),
+        headers: authHeaders,
+      );
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        List<dynamic> unidadesJson;
+        
+        // Verifica se é paginado ou lista direta
+        if (data is Map && data.containsKey('results')) {
+          unidadesJson = data['results'] as List;
+        } else if (data is List) {
+          unidadesJson = data;
+        } else {
+          unidadesJson = [];
+        }
+        
+        _unidadesPermitidas = unidadesJson
+            .map((json) => UnidadeNegocio.fromJson(json))
+            .toList();
+      }
+    } catch (e) {
+      debugPrint('Erro ao carregar unidades: $e');
+      // Fallback: carrega do usuário se disponível
+      if (_usuario != null && _usuario!.unidadesAcesso.isNotEmpty) {
+        _unidadesPermitidas = _usuario!.unidadesAcesso
+            .map((json) => UnidadeNegocio.fromJson(json as Map<String, dynamic>))
+            .toList();
+      }
+    }
+  }
+  
+  /// Carrega unidade ativa salva no SharedPreferences
+  Future<void> _loadUnidadeAtivaSalva(SharedPreferences prefs) async {
+    final unidadeStr = prefs.getString(StorageKeys.unidadeAtiva);
+    if (unidadeStr != null) {
+      try {
+        final unidadeJson = jsonDecode(unidadeStr);
+        final savedUnidade = UnidadeNegocio.fromJson(unidadeJson);
+        
+        // Verifica se a unidade salva ainda está nas permitidas
+        if (_unidadesPermitidas.any((u) => u.id == savedUnidade.id)) {
+          _unidadeAtiva = savedUnidade;
+        } else if (_unidadesPermitidas.isNotEmpty) {
+          // Se não está mais permitida, seleciona a primeira
+          _unidadeAtiva = _unidadesPermitidas.first;
+          await _saveUnidadeAtiva();
+        }
+      } catch (e) {
+        debugPrint('Erro ao carregar unidade ativa: $e');
+      }
+    } else if (_unidadesPermitidas.isNotEmpty) {
+      // Se não há unidade salva, seleciona a primeira
+      _unidadeAtiva = _unidadesPermitidas.first;
+      await _saveUnidadeAtiva();
+    }
+  }
+  
+  /// Altera a unidade ativa
+  Future<void> setUnidadeAtiva(UnidadeNegocio unidade) async {
+    if (!_unidadesPermitidas.any((u) => u.id == unidade.id)) {
+      debugPrint('Unidade não permitida: ${unidade.id}');
+      return;
+    }
+    
+    _unidadeAtiva = unidade;
+    await _saveUnidadeAtiva();
+    notifyListeners();
+  }
+  
+  /// Salva unidade ativa no SharedPreferences
+  Future<void> _saveUnidadeAtiva() async {
+    if (_unidadeAtiva == null) return;
+    
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      StorageKeys.unidadeAtiva,
+      jsonEncode(_unidadeAtiva!.toJson()),
+    );
   }
 
   /// Realiza login com username e password
@@ -130,6 +276,13 @@ class AuthService extends ChangeNotifier {
 
         // Salva tokens e dados do usuário
         await _saveTokens();
+        
+        // Carrega unidades permitidas e seleciona a primeira como ativa
+        await _loadUnidadesPermitidas();
+        if (_unidadesPermitidas.isNotEmpty && _unidadeAtiva == null) {
+          _unidadeAtiva = _unidadesPermitidas.first;
+          await _saveUnidadeAtiva();
+        }
 
         _isLoading = false;
         notifyListeners();
@@ -180,6 +333,8 @@ class AuthService extends ChangeNotifier {
     _accessToken = null;
     _refreshToken = null;
     _usuario = null;
+    _unidadeAtiva = null;
+    _unidadesPermitidas = [];
     _isAuthenticated = false;
     _isLoading = false;
     notifyListeners();
@@ -265,6 +420,7 @@ class AuthService extends ChangeNotifier {
     await prefs.remove(StorageKeys.accessToken);
     await prefs.remove(StorageKeys.refreshToken);
     await prefs.remove(StorageKeys.userData);
+    await prefs.remove(StorageKeys.unidadeAtiva);
   }
 
   /// Retorna headers de autenticação para requisições

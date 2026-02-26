@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import '../services/auth_service.dart';
 import '../utils/constants.dart';
 import '../screens/web/web_dashboard_screen.dart';
 import '../screens/web/web_user_management_screen.dart';
@@ -49,8 +51,11 @@ class WebNavigationMenu extends StatelessWidget {
         children: [
           // Header com Logo
           _buildHeader(context),
+          
+          // Seletor de Unidade Ativa
+          _buildUnidadeSelector(context),
 
-          const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: AppSpacing.sm),
 
           // Menu Items
           Expanded(
@@ -216,6 +221,128 @@ class WebNavigationMenu extends StatelessWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildUnidadeSelector(BuildContext context) {
+    final authService = Provider.of<AuthService>(context);
+    final unidades = authService.unidadesPermitidas;
+    final unidadeAtiva = authService.unidadeAtiva;
+    
+    if (unidades.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    
+    if (isCollapsed) {
+      // Modo recolhido: apenas ícone com tooltip
+      return Tooltip(
+        message: unidadeAtiva?.toString() ?? 'Selecionar Unidade',
+        child: Container(
+          margin: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: AppSpacing.sm,
+          ),
+          padding: const EdgeInsets.all(AppSpacing.sm),
+          decoration: BoxDecoration(
+            color: AppColors.secondary.withAlpha(51),
+            borderRadius: BorderRadius.circular(AppRadius.md),
+          ),
+          child: Icon(
+            Icons.store,
+            color: AppColors.secondary,
+            size: 22,
+          ),
+        ),
+      );
+    }
+    
+    // Modo expandido: dropdown completo
+    return Container(
+      margin: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.sm,
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.primaryDark.withAlpha(128),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(
+          color: AppColors.onPrimary.withAlpha(51),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.store,
+                color: AppColors.secondary,
+                size: 16,
+              ),
+              const SizedBox(width: AppSpacing.xs),
+              Text(
+                'UNIDADE ATIVA',
+                style: GoogleFonts.poppins(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.onPrimary.withAlpha(153),
+                  letterSpacing: 1.0,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Theme(
+            data: Theme.of(context).copyWith(
+              canvasColor: AppColors.primaryDark,
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<UnidadeNegocio>(
+                value: unidadeAtiva,
+                isExpanded: true,
+                isDense: true,
+                icon: Icon(
+                  Icons.keyboard_arrow_down,
+                  color: AppColors.onPrimary.withAlpha(178),
+                ),
+                style: GoogleFonts.poppins(
+                  fontSize: AppFontSizes.body,
+                  color: AppColors.onPrimary,
+                ),
+                items: unidades.map((unidade) {
+                  return DropdownMenuItem<UnidadeNegocio>(
+                    value: unidade,
+                    child: Text(
+                      unidade.toString(),
+                      style: GoogleFonts.poppins(
+                        fontSize: AppFontSizes.body,
+                        fontWeight: unidade.id == unidadeAtiva?.id 
+                            ? FontWeight.w600 
+                            : FontWeight.w400,
+                        color: AppColors.onPrimary,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  );
+                }).toList(),
+                onChanged: (UnidadeNegocio? novaUnidade) async {
+                  if (novaUnidade != null && novaUnidade.id != unidadeAtiva?.id) {
+                    await authService.setUnidadeAtiva(novaUnidade);
+                    // Recarrega a tela atual
+                    if (context.mounted) {
+                      _navigateTo(context, currentSection);
+                    }
+                  }
+                },
+              ),
+            ),
+          ),
         ],
       ),
     );

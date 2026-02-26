@@ -4,29 +4,8 @@ import 'package:http/http.dart' as http;
 import 'package:app_mobile/utils/constants.dart';
 import 'auth_service.dart';
 
-/// Modelo de Unidade de Negócio
-class UnidadeNegocio {
-  final int id;
-  final String codigoUnb;
-  final String nome;
-
-  UnidadeNegocio({
-    required this.id,
-    required this.codigoUnb,
-    required this.nome,
-  });
-
-  factory UnidadeNegocio.fromJson(Map<String, dynamic> json) {
-    return UnidadeNegocio(
-      id: json['id'] ?? 0,
-      codigoUnb: json['codigo_unb'] ?? '',
-      nome: json['nome'] ?? '',
-    );
-  }
-
-  @override
-  String toString() => '$codigoUnb - $nome';
-}
+// Re-exporta UnidadeNegocio do auth_service para manter compatibilidade
+export 'auth_service.dart' show UnidadeNegocio;
 
 /// Resultado do upload
 class UploadResult {

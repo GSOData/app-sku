@@ -19,12 +19,19 @@ class SkuListScreen extends StatefulWidget {
 
 class _SkuListScreenState extends State<SkuListScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   late SkuService _skuService;
   
   List<Sku> _skus = [];
   bool _isLoading = false;
+  bool _isLoadingMore = false;
   bool _hasSearched = false;
   String? _errorMessage;
+  
+  // Controle de paginação
+  int _currentPage = 1;
+  int _totalCount = 0;
+  bool _hasMore = true;
 
   @override
   void initState() {
@@ -32,13 +39,25 @@ class _SkuListScreenState extends State<SkuListScreen> {
     final authService = Provider.of<AuthService>(context, listen: false);
     _skuService = SkuService(authService: authService);
     
+    // Listener para scroll infinito
+    _scrollController.addListener(_onScroll);
+    
     // Carrega lista inicial
     _loadSkus();
+  }
+  
+  void _onScroll() {
+    if (_scrollController.position.pixels >= 
+        _scrollController.position.maxScrollExtent - 200) {
+      // Chegou perto do final, carrega mais
+      _loadMoreSkus();
+    }
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -46,12 +65,16 @@ class _SkuListScreenState extends State<SkuListScreen> {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
+      _currentPage = 1;
+      _hasMore = true;
     });
 
     try {
-      final result = await _skuService.getSkus(query: query);
+      final result = await _skuService.getSkus(query: query, page: 1);
       setState(() {
         _skus = result.results;
+        _totalCount = result.count;
+        _hasMore = result.next != null;
         _hasSearched = query != null && query.isNotEmpty;
       });
     } on AuthException catch (e) {
@@ -63,6 +86,36 @@ class _SkuListScreenState extends State<SkuListScreen> {
     } finally {
       setState(() {
         _isLoading = false;
+      });
+    }
+  }
+  
+  Future<void> _loadMoreSkus() async {
+    if (_isLoadingMore || !_hasMore) return;
+    
+    setState(() {
+      _isLoadingMore = true;
+    });
+
+    try {
+      final query = _searchController.text.trim();
+      final result = await _skuService.getSkus(
+        query: query.isNotEmpty ? query : null,
+        page: _currentPage + 1,
+      );
+      setState(() {
+        _skus.addAll(result.results);
+        _currentPage++;
+        _hasMore = result.next != null;
+      });
+    } on AuthException catch (e) {
+      _handleAuthError(e.message);
+    } catch (e) {
+      // Silencia erro ao carregar mais (não interrompe a experiência)
+      debugPrint('Erro ao carregar mais: $e');
+    } finally {
+      setState(() {
+        _isLoadingMore = false;
       });
     }
   }
@@ -212,12 +265,68 @@ class _SkuListScreenState extends State<SkuListScreen> {
             : null,
       ),
       color: AppColors.primary,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        itemCount: _skus.length,
-        itemBuilder: (context, index) {
-          return _buildSkuCard(_skus[index]);
-        },
+      child: Column(
+        children: [
+          // Contador de itens
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.md,
+              vertical: AppSpacing.sm,
+            ),
+            color: AppColors.surface,
+            child: Row(
+              children: [
+                Icon(
+                  Icons.inventory_2_outlined,
+                  size: 16,
+                  color: AppColors.textSecondary,
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                Text(
+                  'Mostrando ${_skus.length} de $_totalCount itens',
+                  style: GoogleFonts.poppins(
+                    fontSize: AppFontSizes.caption,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                if (_hasMore) ...[
+                  const Spacer(),
+                  Text(
+                    'Role para carregar mais',
+                    style: GoogleFonts.poppins(
+                      fontSize: AppFontSizes.caption,
+                      color: AppColors.primary,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          // Lista
+          Expanded(
+            child: ListView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(AppSpacing.md),
+              itemCount: _skus.length + (_isLoadingMore ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index == _skus.length) {
+                  // Loading indicator no final
+                  return const Padding(
+                    padding: EdgeInsets.all(AppSpacing.md),
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.primary,
+                        strokeWidth: 2,
+                      ),
+                    ),
+                  );
+                }
+                return _buildSkuCard(_skus[index]);
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

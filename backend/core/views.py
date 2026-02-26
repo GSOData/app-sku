@@ -56,6 +56,7 @@ from .serializers import (
 class UnidadeAccessMixin:
     """
     Mixin para filtrar querysets por unidades que o usuário tem acesso.
+    Implementa o padrão "Unidade Ativa" (Multi-tenant).
     """
     
     def get_user_unidades(self):
@@ -65,10 +66,50 @@ class UnidadeAccessMixin:
             return UnidadeNegocio.objects.filter(ativo=True).values_list('id', flat=True)
         return user.get_unidades_ids()
     
+    def get_unidade_ativa(self):
+        """
+        Retorna o ID da unidade ativa baseado no parâmetro `unidade_id`.
+        Valida se o usuário tem acesso à unidade solicitada.
+        Retorna None se não tiver acesso ou se não foi fornecido.
+        """
+        unidade_id = self.request.query_params.get('unidade_id')
+        if not unidade_id:
+            return None
+        
+        try:
+            unidade_id = int(unidade_id)
+        except (ValueError, TypeError):
+            return None
+        
+        # Superusuário tem acesso a todas as unidades
+        if self.request.user.is_superuser:
+            if UnidadeNegocio.objects.filter(id=unidade_id, ativo=True).exists():
+                return unidade_id
+            return None
+        
+        # Usuário comum: verifica se tem acesso
+        unidades_permitidas = list(self.get_user_unidades())
+        if unidade_id in unidades_permitidas:
+            return unidade_id
+        
+        return None
+    
     def filter_by_unidade(self, queryset, unidade_field='unidade_negocio'):
         """Filtra queryset pelas unidades do usuário."""
         unidades_ids = self.get_user_unidades()
         filter_kwargs = {f'{unidade_field}__id__in': unidades_ids}
+        return queryset.filter(**filter_kwargs)
+    
+    def filter_by_unidade_ativa(self, queryset, unidade_field='unidade_negocio'):
+        """
+        Filtra queryset pela unidade ativa.
+        Se não houver unidade ativa válida, retorna queryset vazio.
+        """
+        unidade_id = self.get_unidade_ativa()
+        if unidade_id is None:
+            return queryset.none()
+        
+        filter_kwargs = {f'{unidade_field}_id': unidade_id}
         return queryset.filter(**filter_kwargs)
 
 
@@ -244,12 +285,14 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
                 queryset=LoteValidade.objects.filter(
                     ativo=True, 
                     qtd_estoque__gt=0
+                ).exclude(
+                    numero_lote='BASE'  # Exclui Lote BASE
                 ).order_by('data_validade')
             )
         )
         
-        # Filtra por unidades do usuário
-        queryset = self.filter_by_unidade(queryset)
+        # Filtra pela unidade ativa (obrigatório)
+        queryset = self.filter_by_unidade_ativa(queryset)
         
         # Busca por codigo_sku OU nome_produto
         search = self.request.query_params.get('search', None)
@@ -258,11 +301,6 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
                 Q(codigo_sku__icontains=search) | 
                 Q(nome_produto__icontains=search)
             )
-        
-        # Filtro por unidade específica (via query param)
-        unidade_id = self.request.query_params.get('unidade_id', None)
-        if unidade_id:
-            queryset = queryset.filter(unidade_negocio_id=unidade_id)
         
         return queryset.distinct()
     
@@ -291,12 +329,18 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
         
         Parâmetros:
         - search: Termo de busca (codigo_sku ou nome_produto)
-        - unidade_id: ID da unidade (opcional)
+        - unidade_id: ID da unidade (OBRIGATÓRIO)
         
         Retorna lista com status calculado.
         """
         search = request.query_params.get('search', None)
-        unidade_id = request.query_params.get('unidade_id', None)
+        
+        # Valida unidade ativa
+        if not self.get_unidade_ativa():
+            return Response(
+                {'detail': 'Parâmetro "unidade_id" é obrigatório e deve ser uma unidade válida.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         if not search:
             return Response(
@@ -304,19 +348,17 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # get_queryset já aplica o filtro de unidade ativa
         queryset = self.get_queryset().filter(
             Q(codigo_sku__icontains=search) | 
             Q(nome_produto__icontains=search)
         )
         
-        if unidade_id:
-            queryset = queryset.filter(unidade_negocio_id=unidade_id)
-        
         # Log de consulta
         log_consulta(
             usuario=request.user,
             tipo='VALIDADE',
-            parametros={'search': search, 'unidade_id': unidade_id},
+            parametros={'search': search, 'unidade_id': self.get_unidade_ativa()},
             request=request
         )
         
@@ -333,9 +375,15 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
         GET /api/skus/{id}/lotes/
         
         Retorna todos os lotes de um SKU ordenados por validade (FEFO).
+        Exclui o Lote BASE.
         """
         sku = self.get_object()
-        lotes = sku.lotes.filter(ativo=True, qtd_estoque__gt=0).order_by('data_validade')
+        lotes = sku.lotes.filter(
+            ativo=True, 
+            qtd_estoque__gt=0
+        ).exclude(
+            numero_lote='BASE'  # Exclui Lote BASE
+        ).order_by('data_validade')
         serializer = LoteValidadeResumoSerializer(lotes, many=True)
         return Response(serializer.data)
 
@@ -504,7 +552,11 @@ class EstoqueViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
         ).prefetch_related(
             Prefetch(
                 'lotes',
-                queryset=LoteValidade.objects.filter(ativo=True)
+                queryset=LoteValidade.objects.filter(
+                    ativo=True
+                ).exclude(
+                    numero_lote='BASE'  # Exclui Lote BASE
+                )
             ),
             Prefetch(
                 'movimentacoes',
@@ -516,8 +568,8 @@ class EstoqueViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
             )
         )
         
-        # Filtra por unidades do usuário
-        queryset = self.filter_by_unidade(queryset)
+        # Filtra pela unidade ativa (obrigatório)
+        queryset = self.filter_by_unidade_ativa(queryset)
         
         # Busca por codigo_sku ou nome
         search = self.request.query_params.get('search', None)
@@ -526,11 +578,6 @@ class EstoqueViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
                 Q(codigo_sku__icontains=search) | 
                 Q(nome_produto__icontains=search)
             )
-        
-        # Filtro por unidade específica
-        unidade_id = self.request.query_params.get('unidade_id', None)
-        if unidade_id:
-            queryset = queryset.filter(unidade_negocio_id=unidade_id)
         
         return queryset.distinct()
     
@@ -593,6 +640,7 @@ class EstoqueViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
 class LoteValidadeViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
     """
     ViewSet para LoteValidade.
+    Exclui automaticamente o Lote BASE (data_validade=None).
     """
     serializer_class = LoteValidadeSerializer
     permission_classes = [IsAuthenticated]
@@ -602,14 +650,17 @@ class LoteValidadeViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
     ordering = ['data_validade']
     
     def get_queryset(self):
-        queryset = LoteValidade.objects.filter(ativo=True).select_related(
+        queryset = LoteValidade.objects.filter(
+            ativo=True
+        ).exclude(
+            numero_lote='BASE'  # Exclui Lote BASE
+        ).select_related(
             'sku', 
             'sku__unidade_negocio'
         )
         
-        # Filtra por unidades do usuário
-        unidades_ids = self.get_user_unidades()
-        queryset = queryset.filter(sku__unidade_negocio_id__in=unidades_ids)
+        # Filtra pela unidade ativa (obrigatório via SKU)
+        queryset = self.filter_by_unidade_ativa(queryset, unidade_field='sku__unidade_negocio')
         
         # Filtro por SKU específico
         sku_id = self.request.query_params.get('sku_id', None)

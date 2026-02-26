@@ -7,7 +7,7 @@ import '../../utils/constants.dart';
 import '../../widgets/responsive_layout.dart';
 import '../../widgets/web_navigation_menu.dart';
 import '../../services/auth_service.dart';
-import '../../services/upload_service.dart';
+import '../../services/upload_service.dart' hide UnidadeNegocio;
 import '../login_screen.dart';
 
 /// Tela de Upload de Arquivos (Web)

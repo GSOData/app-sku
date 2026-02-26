@@ -288,21 +288,27 @@ class SKU(BaseModel):
         """
         Retorna o lote com data de validade mais próxima (FEFO).
         Considera apenas lotes ativos com estoque > 0.
-        Ignora lotes sem data de validade.
+        Exclui o Lote BASE (cego, sem validade real).
         """
         return self.lotes.filter(
             ativo=True,
-            qtd_estoque__gt=0,
-            data_validade__isnull=False
+            qtd_estoque__gt=0
+        ).exclude(
+            numero_lote='BASE'
         ).order_by('data_validade').first()
 
     @property
     def quantidade_total_estoque(self) -> int:
         """
-        Retorna a soma de todos os lotes ativos deste SKU.
+        Retorna a soma dos lotes ativos.
+        Exclui o Lote BASE (estoque cego) para evitar duplicidade.
         """
         from django.db.models import Sum
-        total = self.lotes.filter(ativo=True).aggregate(
+        total = self.lotes.filter(
+            ativo=True
+        ).exclude(
+            numero_lote='BASE'  # Ignora Lote BASE
+        ).aggregate(
             total=Sum('qtd_estoque')
         )['total']
         return total or 0
