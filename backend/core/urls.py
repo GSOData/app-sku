@@ -4,6 +4,7 @@ URLs do app core - API SKU+.
 Estrutura:
 - /api/auth/          -> Autenticação (login, logout, me, token)
 - /api/unidades/      -> CRUD Unidades de Negócio
+- /api/usuarios/      -> CRUD Usuários (RBAC: GERENTE+)
 - /api/skus/          -> CRUD SKUs + Consulta Validade
 - /api/lotes/         -> CRUD Lotes
 - /api/estoque/       -> Estoque Inicial (read-only)
@@ -24,6 +25,7 @@ from .views import (
     MeView,
     # ViewSets
     UnidadeNegocioViewSet,
+    UsuarioViewSet,
     SKUViewSet,
     LoteValidadeViewSet,
     EstoqueViewSet,
@@ -41,6 +43,7 @@ app_name = 'core'
 # Router para ViewSets
 router = DefaultRouter()
 router.register(r'unidades', UnidadeNegocioViewSet, basename='unidades')
+router.register(r'usuarios', UsuarioViewSet, basename='usuarios')
 router.register(r'skus', SKUViewSet, basename='skus')
 router.register(r'lotes', LoteValidadeViewSet, basename='lotes')
 router.register(r'estoque', EstoqueViewSet, basename='estoque')

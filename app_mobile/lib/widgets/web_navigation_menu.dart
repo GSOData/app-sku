@@ -6,6 +6,7 @@ import '../utils/constants.dart';
 import '../screens/web/web_dashboard_screen.dart';
 import '../screens/web/web_user_management_screen.dart';
 import '../screens/web/web_upload_screen.dart';
+import '../screens/web/web_settings_screen.dart';
 import '../screens/sku_list_screen.dart';
 import '../screens/critical_items_screen.dart';
 import '../screens/stock_report_screen.dart';
@@ -64,91 +65,7 @@ class WebNavigationMenu extends StatelessWidget {
                 horizontal: AppSpacing.sm,
                 vertical: AppSpacing.sm,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Seção Principal
-                  if (!isCollapsed)
-                    _buildSectionLabel('PRINCIPAL'),
-                  
-                  _buildMenuItem(
-                    context,
-                    icon: Icons.dashboard_outlined,
-                    activeIcon: Icons.dashboard,
-                    label: 'Dashboard',
-                    section: WebMenuSection.dashboard,
-                    onTap: () => _navigateTo(context, WebMenuSection.dashboard),
-                  ),
-                  _buildMenuItem(
-                    context,
-                    icon: Icons.inventory_2_outlined,
-                    activeIcon: Icons.inventory_2,
-                    label: 'Lista de SKUs',
-                    section: WebMenuSection.skus,
-                    onTap: () => _navigateTo(context, WebMenuSection.skus),
-                  ),
-                  _buildMenuItem(
-                    context,
-                    icon: Icons.warning_amber_outlined,
-                    activeIcon: Icons.warning_amber,
-                    label: 'Itens Críticos',
-                    section: WebMenuSection.critical,
-                    badge: '12',
-                    badgeColor: AppColors.error,
-                    onTap: () => _navigateTo(context, WebMenuSection.critical),
-                  ),
-                  _buildMenuItem(
-                    context,
-                    icon: Icons.assessment_outlined,
-                    activeIcon: Icons.assessment,
-                    label: 'Relatório Estoque',
-                    section: WebMenuSection.stockReport,
-                    onTap: () => _navigateTo(context, WebMenuSection.stockReport),
-                  ),
-
-                  const SizedBox(height: AppSpacing.md),
-
-                  // Seção Gestão
-                  if (!isCollapsed)
-                    _buildSectionLabel('GESTÃO'),
-                  
-                  _buildMenuItem(
-                    context,
-                    icon: Icons.people_outline,
-                    activeIcon: Icons.people,
-                    label: 'Usuários',
-                    section: WebMenuSection.users,
-                    onTap: () => _navigateTo(context, WebMenuSection.users),
-                  ),
-                  _buildMenuItem(
-                    context,
-                    icon: Icons.upload_file_outlined,
-                    activeIcon: Icons.upload_file,
-                    label: 'Upload Dados',
-                    section: WebMenuSection.upload,
-                    onTap: () => _navigateTo(context, WebMenuSection.upload),
-                  ),
-
-                  const SizedBox(height: AppSpacing.md),
-
-                  // Seção Sistema
-                  if (!isCollapsed)
-                    _buildSectionLabel('SISTEMA'),
-                  
-                  _buildMenuItem(
-                    context,
-                    icon: Icons.settings_outlined,
-                    activeIcon: Icons.settings,
-                    label: 'Configurações',
-                    section: WebMenuSection.settings,
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Configurações em breve!')),
-                      );
-                    },
-                  ),
-                ],
-              ),
+              child: _buildMenuItems(context),
             ),
           ),
 
@@ -366,6 +283,114 @@ class WebNavigationMenu extends StatelessWidget {
       ),
     );
   }
+  
+  /// Constrói os itens do menu condicionalmente baseado no papel do usuário
+  Widget _buildMenuItems(BuildContext context) {
+    final authService = Provider.of<AuthService>(context);
+    final usuario = authService.usuario;
+    
+    // Valores padrão para usuários não autenticados ou sem papel definido
+    final canEdit = usuario?.canEdit ?? false;
+    final canUpload = usuario?.canUpload ?? false;
+    final canManageUsers = usuario?.canManageUsers ?? false;
+    final canManageSettings = usuario?.canManageSettings ?? false;
+    final isDiretoria = usuario?.isDiretoria ?? false;
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // ============================================
+        // SEÇÃO PRINCIPAL - Todos os papéis
+        // ============================================
+        if (!isCollapsed)
+          _buildSectionLabel('PRINCIPAL'),
+        
+        _buildMenuItem(
+          context,
+          icon: Icons.dashboard_outlined,
+          activeIcon: Icons.dashboard,
+          label: isDiretoria ? 'Dashboard Consolidado' : 'Dashboard',
+          section: WebMenuSection.dashboard,
+          onTap: () => _navigateTo(context, WebMenuSection.dashboard),
+        ),
+        _buildMenuItem(
+          context,
+          icon: Icons.inventory_2_outlined,
+          activeIcon: Icons.inventory_2,
+          label: 'Lista de SKUs',
+          section: WebMenuSection.skus,
+          onTap: () => _navigateTo(context, WebMenuSection.skus),
+        ),
+        _buildMenuItem(
+          context,
+          icon: Icons.warning_amber_outlined,
+          activeIcon: Icons.warning_amber,
+          label: 'Itens Críticos',
+          section: WebMenuSection.critical,
+          badge: '12',
+          badgeColor: AppColors.error,
+          onTap: () => _navigateTo(context, WebMenuSection.critical),
+        ),
+        _buildMenuItem(
+          context,
+          icon: Icons.assessment_outlined,
+          activeIcon: Icons.assessment,
+          label: 'Relatório Estoque',
+          section: WebMenuSection.stockReport,
+          onTap: () => _navigateTo(context, WebMenuSection.stockReport),
+        ),
+
+        // ============================================
+        // SEÇÃO GESTÃO - Apenas GERENTE e DIRETORIA
+        // ============================================
+        if (canManageUsers || canUpload) ...[
+          const SizedBox(height: AppSpacing.md),
+          if (!isCollapsed)
+            _buildSectionLabel('GESTÃO'),
+          
+          // Usuários: GERENTE (sua unidade) e DIRETORIA (todas)
+          if (canManageUsers)
+            _buildMenuItem(
+              context,
+              icon: Icons.people_outline,
+              activeIcon: Icons.people,
+              label: 'Usuários',
+              section: WebMenuSection.users,
+              onTap: () => _navigateTo(context, WebMenuSection.users),
+            ),
+          
+          // Upload: apenas GERENTE
+          if (canUpload)
+            _buildMenuItem(
+              context,
+              icon: Icons.upload_file_outlined,
+              activeIcon: Icons.upload_file,
+              label: 'Upload Dados',
+              section: WebMenuSection.upload,
+              onTap: () => _navigateTo(context, WebMenuSection.upload),
+            ),
+        ],
+
+        // ============================================
+        // SEÇÃO SISTEMA - Apenas GERENTE e DIRETORIA
+        // ============================================
+        if (canManageSettings) ...[
+          const SizedBox(height: AppSpacing.md),
+          if (!isCollapsed)
+            _buildSectionLabel('SISTEMA'),
+          
+          _buildMenuItem(
+            context,
+            icon: Icons.settings_outlined,
+            activeIcon: Icons.settings,
+            label: 'Configurações',
+            section: WebMenuSection.settings,
+            onTap: () => _navigateTo(context, WebMenuSection.settings),
+          ),
+        ],
+      ],
+    );
+  }
 
   Widget _buildMenuItem(
     BuildContext context, {
@@ -529,8 +554,8 @@ class WebNavigationMenu extends StatelessWidget {
         screen = const WebUploadScreen();
         break;
       case WebMenuSection.settings:
-        // TODO: Implementar tela de configurações
-        return;
+        screen = const WebSettingsScreen();
+        break;
     }
 
     Navigator.of(context).pushReplacement(

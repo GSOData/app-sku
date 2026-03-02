@@ -113,10 +113,17 @@ class SkuService {
   /// Busca SKU por ID
   Future<Sku> getSkuById(int id) async {
     try {
-      final response = await http.get(
-        Uri.parse('${Constants.apiUrl}skus/$id/'),
-        headers: _headers,
-      );
+      // Monta URL com unidade_id obrigatório
+      final queryParams = <String, String>{};
+      final unidadeId = authService.unidadeAtiva?.id;
+      if (unidadeId != null) {
+        queryParams['unidade_id'] = unidadeId.toString();
+      }
+      
+      final uri = Uri.parse('${Constants.apiUrl}skus/$id/')
+          .replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
+      
+      final response = await http.get(uri, headers: _headers);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -137,10 +144,19 @@ class SkuService {
   /// Busca lotes de um SKU específico
   Future<List<Lote>> getLotesBySku(int skuId) async {
     try {
-      final response = await http.get(
-        Uri.parse('${Constants.apiUrl}skus/$skuId/lotes/'),
-        headers: _headers,
-      );
+      // Monta URL com unidade_id obrigatório
+      final queryParams = <String, String>{};
+      final unidadeId = authService.unidadeAtiva?.id;
+      if (unidadeId != null) {
+        queryParams['unidade_id'] = unidadeId.toString();
+      }
+      
+      final uri = Uri.parse('${Constants.apiUrl}skus/$skuId/lotes/')
+          .replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
+      
+      debugPrint('SkuService.getLotesBySku: $uri');
+      
+      final response = await http.get(uri, headers: _headers);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);

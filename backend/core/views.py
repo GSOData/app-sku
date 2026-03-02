@@ -19,6 +19,16 @@ from django.db.models import Q, Sum, Prefetch
 from django_filters.rest_framework import DjangoFilterBackend
 from datetime import date
 
+from .permissions import (
+    IsVendedor,
+    IsGerente,
+    IsDiretoria,
+    IsGerenteOuDiretoria,
+    CanReadSKU,
+    CanManageUpload,
+    ObjectBelongsToUserUnit,
+)
+
 from .models import (
     UnidadeNegocio,
     Usuario,
@@ -264,8 +274,13 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
     - Filtro por unidade_negocio
     - Filtro por categoria
     - Campos calculados de status
+    
+    Permissões RBAC:
+    - VENDEDOR: somente leitura
+    - GERENTE: CRUD completo
+    - DIRETORIA: leitura consolidada
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanReadSKU]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['unidade_negocio', 'categoria', 'ativo']
     ordering_fields = ['nome_produto', 'codigo_sku', 'created_at']
@@ -641,9 +656,14 @@ class LoteValidadeViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
     """
     ViewSet para LoteValidade.
     Exclui automaticamente o Lote BASE (data_validade=None).
+    
+    Permissões RBAC:
+    - VENDEDOR: somente leitura
+    - GERENTE: CRUD completo
+    - DIRETORIA: leitura consolidada
     """
     serializer_class = LoteValidadeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanReadSKU]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['sku', 'ativo']
     ordering_fields = ['data_validade', 'numero_lote', 'created_at']
@@ -686,10 +706,13 @@ class LoteValidadeViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
 class ConfiguracaoAlertaViewSet(viewsets.ModelViewSet):
     """
     ViewSet para ConfiguracaoAlerta.
+    
+    Permissões RBAC:
+    - Apenas GERENTE e DIRETORIA podem gerenciar configurações
     """
     queryset = ConfiguracaoAlerta.objects.filter(ativo=True)
     serializer_class = ConfiguracaoAlertaSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsGerenteOuDiretoria]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['unidade']
 
@@ -700,9 +723,14 @@ class ConfiguracaoAlertaViewSet(viewsets.ModelViewSet):
 class MovimentacaoEstoqueViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
     """
     ViewSet para MovimentacaoEstoque.
+    
+    Permissões RBAC:
+    - VENDEDOR: somente leitura
+    - GERENTE: CRUD completo
+    - DIRETORIA: leitura consolidada
     """
     serializer_class = MovimentacaoEstoqueSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanReadSKU]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['tipo', 'status', 'sku']
     ordering_fields = ['created_at', 'data_prevista']
@@ -729,6 +757,159 @@ class MovimentacaoEstoqueViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         serializer.save(usuario=self.request.user)
+
+
+# =============================================================================
+# GESTÃO DE USUÁRIOS
+# =============================================================================
+class UsuarioViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para gestão de Usuários.
+    
+    Permissões RBAC:
+    - GERENTE: pode gerenciar usuários da sua unidade
+    - DIRETORIA: pode gerenciar usuários de todas as unidades
+    - VENDEDOR: não tem acesso
+    """
+    serializer_class = UsuarioSerializer
+    permission_classes = [IsAuthenticated, IsGerenteOuDiretoria]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['first_name', 'last_name', 'email', 'username']
+    ordering_fields = ['first_name', 'last_name', 'email', 'created_at']
+    ordering = ['first_name', 'last_name']
+    
+    def get_queryset(self):
+        """
+        Filtra usuários conforme papel do usuário autenticado:
+        - DIRETORIA/Superuser: vê todos os usuários
+        - GERENTE: vê apenas usuários das suas unidades
+        """
+        user = self.request.user
+        
+        if user.is_superuser or user.is_diretoria():
+            queryset = Usuario.objects.filter(is_active=True)
+        else:
+            # GERENTE vê apenas usuários das suas unidades
+            unidades_ids = user.get_unidades_ids()
+            queryset = Usuario.objects.filter(
+                is_active=True,
+                unidades__id__in=unidades_ids
+            ).distinct()
+        
+        # Filtro por unidade específica (query param)
+        unidade_id = self.request.query_params.get('unidade_id')
+        if unidade_id:
+            queryset = queryset.filter(unidades__id=unidade_id)
+        
+        return queryset.prefetch_related('unidades')
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return UsuarioCreateSerializer
+        return UsuarioSerializer
+    
+    @action(detail=True, methods=['post'])
+    def vincular_unidade(self, request, pk=None):
+        """
+        POST /api/usuarios/{id}/vincular_unidade/
+        Body: { "unidade_id": int, "papel": str }
+        
+        Vincula usuário a uma unidade com papel específico.
+        """
+        usuario = self.get_object()
+        unidade_id = request.data.get('unidade_id')
+        papel = request.data.get('papel', 'VENDEDOR')
+        
+        if not unidade_id:
+            return Response(
+                {'error': 'unidade_id é obrigatório'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if papel not in ['VENDEDOR', 'GERENTE', 'DIRETORIA']:
+            return Response(
+                {'error': 'Papel inválido. Use: VENDEDOR, GERENTE ou DIRETORIA'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Verifica permissão: só DIRETORIA pode criar outros DIRETORIA
+        if papel == 'DIRETORIA' and not request.user.is_diretoria():
+            return Response(
+                {'error': 'Apenas diretoria pode criar usuários DIRETORIA'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            unidade = UnidadeNegocio.objects.get(id=unidade_id, ativo=True)
+            
+            # Verifica se GERENTE tem acesso a essa unidade
+            if not request.user.is_superuser and not request.user.is_diretoria():
+                if not request.user.tem_acesso_unidade(unidade.id):
+                    return Response(
+                        {'error': 'Você não tem acesso a esta unidade'},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+            
+            vinculo, created = UsuarioUnidade.objects.update_or_create(
+                usuario=usuario,
+                unidade=unidade,
+                defaults={'papel': papel}
+            )
+            
+            return Response({
+                'success': True,
+                'message': f'Usuário vinculado como {papel}',
+                'created': created
+            })
+            
+        except UnidadeNegocio.DoesNotExist:
+            return Response(
+                {'error': 'Unidade não encontrada'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+    
+    @action(detail=True, methods=['post'])
+    def desvincular_unidade(self, request, pk=None):
+        """
+        POST /api/usuarios/{id}/desvincular_unidade/
+        Body: { "unidade_id": int }
+        
+        Remove vínculo do usuário com uma unidade.
+        """
+        usuario = self.get_object()
+        unidade_id = request.data.get('unidade_id')
+        
+        if not unidade_id:
+            return Response(
+                {'error': 'unidade_id é obrigatório'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            vinculo = UsuarioUnidade.objects.get(
+                usuario=usuario,
+                unidade_id=unidade_id
+            )
+            
+            # Verifica se GERENTE tem acesso a essa unidade
+            if not request.user.is_superuser and not request.user.is_diretoria():
+                if not request.user.tem_acesso_unidade(int(unidade_id)):
+                    return Response(
+                        {'error': 'Você não tem acesso a esta unidade'},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+            
+            vinculo.delete()
+            return Response({
+                'success': True,
+                'message': 'Vínculo removido com sucesso'
+            })
+            
+        except UsuarioUnidade.DoesNotExist:
+            return Response(
+                {'error': 'Vínculo não encontrado'},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
 
 # =============================================================================
@@ -765,8 +946,11 @@ class UploadEstoqueView(APIView):
     Form data:
     - file: arquivo .xlsx, .xls ou .csv
     - unidade_negocio_id: ID da unidade de negócio
+    
+    Permissões RBAC:
+    - Apenas GERENTE pode fazer upload na sua unidade
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanManageUpload]
     
     def post(self, request):
         from .services import EstoqueImportService
@@ -834,8 +1018,11 @@ class UploadContagensView(APIView):
     Form data:
     - file: arquivo .xlsx, .xls ou .csv
     - unidade_negocio_id: ID da unidade de negócio
+    
+    Permissões RBAC:
+    - Apenas GERENTE pode fazer upload na sua unidade
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanManageUpload]
     
     def post(self, request):
         from .services import EstoqueImportService

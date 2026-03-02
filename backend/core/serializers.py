@@ -90,6 +90,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
     """Serializer completo para Usuário."""
     unidades_acesso = serializers.SerializerMethodField()
     nome_completo = serializers.SerializerMethodField()
+    max_papel = serializers.SerializerMethodField()
     
     class Meta:
         model = Usuario
@@ -103,12 +104,18 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'telefone',
             'cargo',
             'is_active',
+            'is_superuser',
+            'max_papel',
             'unidades_acesso',
         ]
-        read_only_fields = ['id', 'is_active']
+        read_only_fields = ['id', 'is_active', 'is_superuser']
     
     def get_nome_completo(self, obj) -> str:
         return obj.get_full_name() or obj.username
+    
+    def get_max_papel(self, obj) -> str:
+        """Retorna o papel de maior privilégio do usuário."""
+        return obj.get_max_papel()
     
     def get_unidades_acesso(self, obj) -> list:
         vinculos = UsuarioUnidade.objects.filter(usuario=obj).select_related('unidade')

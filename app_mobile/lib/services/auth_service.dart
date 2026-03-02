@@ -52,6 +52,8 @@ class Usuario {
   final String? nomeCompleto;
   final String? telefone;
   final String? cargo;
+  final bool isSuperuser;
+  final String maxPapel; // VENDEDOR, GERENTE, DIRETORIA
   final List<dynamic> unidadesAcesso;
 
   Usuario({
@@ -61,6 +63,8 @@ class Usuario {
     this.nomeCompleto,
     this.telefone,
     this.cargo,
+    this.isSuperuser = false,
+    this.maxPapel = 'VENDEDOR',
     this.unidadesAcesso = const [],
   });
 
@@ -72,6 +76,8 @@ class Usuario {
       nomeCompleto: json['nome_completo'],
       telefone: json['telefone'],
       cargo: json['cargo'],
+      isSuperuser: json['is_superuser'] ?? false,
+      maxPapel: json['max_papel'] ?? 'VENDEDOR',
       unidadesAcesso: json['unidades_acesso'] ?? [],
     );
   }
@@ -84,9 +90,35 @@ class Usuario {
       'nome_completo': nomeCompleto,
       'telefone': telefone,
       'cargo': cargo,
+      'is_superuser': isSuperuser,
+      'max_papel': maxPapel,
       'unidades_acesso': unidadesAcesso,
     };
   }
+  
+  /// Verifica se o usuário é VENDEDOR (somente leitura)
+  bool get isVendedor => maxPapel == 'VENDEDOR';
+  
+  /// Verifica se o usuário é GERENTE (CRUD completo na unidade)
+  bool get isGerente => maxPapel == 'GERENTE' || isSuperuser;
+  
+  /// Verifica se o usuário é DIRETORIA (dashboards consolidados)
+  bool get isDiretoria => maxPapel == 'DIRETORIA' || isSuperuser;
+  
+  /// Verifica se pode editar SKUs/Lotes (GERENTE ou superior)
+  bool get canEdit => isGerente || isDiretoria;
+  
+  /// Verifica se pode fazer upload de planilhas (GERENTE)
+  bool get canUpload => isGerente;
+  
+  /// Verifica se pode gerenciar usuários (GERENTE ou DIRETORIA)
+  bool get canManageUsers => isGerente || isDiretoria;
+  
+  /// Verifica se pode acessar configurações (GERENTE ou DIRETORIA)
+  bool get canManageSettings => isGerente || isDiretoria;
+  
+  /// Verifica se pode ver dashboard consolidado (DIRETORIA)
+  bool get canViewConsolidated => isDiretoria;
 }
 
 /// Serviço de autenticação com ChangeNotifier para gerenciar estado

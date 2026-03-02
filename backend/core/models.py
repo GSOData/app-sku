@@ -118,12 +118,74 @@ class Usuario(AbstractUser):
             return list(UnidadeNegocio.objects.filter(ativo=True).values_list('id', flat=True))
         return list(self.unidades.filter(ativo=True).values_list('id', flat=True))
 
+    def get_papel_unidade(self, unidade_id: int) -> str | None:
+        """
+        Retorna o papel do usuário em uma unidade específica.
+        Superusuários são tratados como DIRETORIA.
+        """
+        if self.is_superuser:
+            return 'DIRETORIA'
+        from core.models import UsuarioUnidade
+        vinculo = UsuarioUnidade.objects.filter(
+            usuario=self,
+            unidade_id=unidade_id
+        ).first()
+        return vinculo.papel if vinculo else None
+
+    def is_vendedor(self, unidade_id: int) -> bool:
+        """Verifica se o usuário é VENDEDOR na unidade."""
+        return self.get_papel_unidade(unidade_id) == 'VENDEDOR'
+
+    def is_gerente(self, unidade_id: int) -> bool:
+        """Verifica se o usuário é GERENTE na unidade."""
+        return self.get_papel_unidade(unidade_id) == 'GERENTE'
+
+    def is_diretoria(self) -> bool:
+        """
+        Verifica se o usuário é DIRETORIA em qualquer unidade.
+        DIRETORIA tem acesso consolidado a todas as unidades.
+        """
+        if self.is_superuser:
+            return True
+        from core.models import UsuarioUnidade
+        return UsuarioUnidade.objects.filter(
+            usuario=self,
+            papel='DIRETORIA'
+        ).exists()
+
+    def get_max_papel(self) -> str:
+        """
+        Retorna o papel de maior privilégio do usuário.
+        Ordem: DIRETORIA > GERENTE > VENDEDOR
+        """
+        if self.is_superuser:
+            return 'DIRETORIA'
+        from core.models import UsuarioUnidade
+        papeis = list(UsuarioUnidade.objects.filter(
+            usuario=self
+        ).values_list('papel', flat=True))
+        
+        if 'DIRETORIA' in papeis:
+            return 'DIRETORIA'
+        if 'GERENTE' in papeis:
+            return 'GERENTE'
+        if 'VENDEDOR' in papeis:
+            return 'VENDEDOR'
+        return 'VENDEDOR'  # Default
+
 
 class UsuarioUnidade(models.Model):
     """
     Tabela intermediária para relacionamento Usuario-UnidadeNegocio.
     Permite adicionar campos extras como papel/função na unidade.
     """
+    # Choices de papéis atualizados conforme RBAC
+    PAPEL_CHOICES = [
+        ('VENDEDOR', 'Vendedor'),      # Somente leitura
+        ('GERENTE', 'Gerente'),        # CRUD completo na unidade
+        ('DIRETORIA', 'Diretoria'),    # Dashboards e relatórios consolidados
+    ]
+    
     usuario = models.ForeignKey(
         Usuario,
         on_delete=models.CASCADE,
@@ -137,12 +199,8 @@ class UsuarioUnidade(models.Model):
     papel = models.CharField(
         'Papel na Unidade',
         max_length=50,
-        choices=[
-            ('OPERADOR', 'Operador'),
-            ('SUPERVISOR', 'Supervisor'),
-            ('GERENTE', 'Gerente'),
-        ],
-        default='OPERADOR'
+        choices=PAPEL_CHOICES,
+        default='VENDEDOR'
     )
     data_vinculo = models.DateField(
         'Data de Vínculo',
