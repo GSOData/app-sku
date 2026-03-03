@@ -8,24 +8,22 @@ import '../../widgets/responsive_layout.dart';
 import '../../widgets/web_navigation_menu.dart';
 import '../../services/auth_service.dart';
 
-/// Modelo de Configuração de Alerta
+/// Modelo de Configuração de Alerta (ATUALIZADO)
 class ConfiguracaoAlerta {
   final int id;
   final int? unidadeId;
   final String? unidadeNome;
-  final int diasParaCritico;
-  final int diasParaPreBloqueio;
-  final bool alertaAtivo;
-  final bool emailAtivo;
+  final int diasPreBloqueio;
+  final int diasBloqueado;
+  final int diasExtremamenteCritico;
 
   ConfiguracaoAlerta({
     required this.id,
     this.unidadeId,
     this.unidadeNome,
-    required this.diasParaCritico,
-    required this.diasParaPreBloqueio,
-    required this.alertaAtivo,
-    required this.emailAtivo,
+    required this.diasPreBloqueio,
+    required this.diasBloqueado,
+    required this.diasExtremamenteCritico,
   });
 
   factory ConfiguracaoAlerta.fromJson(Map<String, dynamic> json) {
@@ -33,19 +31,17 @@ class ConfiguracaoAlerta {
       id: json['id'] ?? 0,
       unidadeId: json['unidade']?['id'],
       unidadeNome: json['unidade']?['nome'],
-      diasParaCritico: json['dias_para_critico'] ?? 30,
-      diasParaPreBloqueio: json['dias_para_pre_bloqueio'] ?? 45,
-      alertaAtivo: json['alerta_ativo'] ?? true,
-      emailAtivo: json['email_ativo'] ?? false,
+      diasPreBloqueio: json['dias_pre_bloqueio'] ?? 60,
+      diasBloqueado: json['dias_bloqueado'] ?? 30,
+      diasExtremamenteCritico: json['dias_extremamente_critico'] ?? 7,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'dias_para_critico': diasParaCritico,
-      'dias_para_pre_bloqueio': diasParaPreBloqueio,
-      'alerta_ativo': alertaAtivo,
-      'email_ativo': emailAtivo,
+      'dias_pre_bloqueio': diasPreBloqueio,
+      'dias_bloqueado': diasBloqueado,
+      'dias_extremamente_critico': diasExtremamenteCritico,
     };
   }
 }
@@ -63,25 +59,26 @@ class _WebSettingsScreenState extends State<WebSettingsScreen> {
   String? _errorMessage;
   ConfiguracaoAlerta? _configuracao;
   
-  // Controllers
-  late TextEditingController _diasCriticoController;
+  // Controllers (NOVOS CAMPOS)
   late TextEditingController _diasPreBloqueioController;
-  bool _alertaAtivo = true;
-  bool _emailAtivo = false;
+  late TextEditingController _diasBloqueadoController;
+  late TextEditingController _diasExtremamenteCriticoController;
   bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
-    _diasCriticoController = TextEditingController(text: '30');
-    _diasPreBloqueioController = TextEditingController(text: '45');
+    _diasPreBloqueioController = TextEditingController(text: '60');
+    _diasBloqueadoController = TextEditingController(text: '30');
+    _diasExtremamenteCriticoController = TextEditingController(text: '7');
     _loadConfiguracoes();
   }
 
   @override
   void dispose() {
-    _diasCriticoController.dispose();
     _diasPreBloqueioController.dispose();
+    _diasBloqueadoController.dispose();
+    _diasExtremamenteCriticoController.dispose();
     super.dispose();
   }
 
@@ -122,10 +119,9 @@ class _WebSettingsScreenState extends State<WebSettingsScreen> {
         
         if (configs.isNotEmpty) {
           _configuracao = ConfiguracaoAlerta.fromJson(configs.first);
-          _diasCriticoController.text = _configuracao!.diasParaCritico.toString();
-          _diasPreBloqueioController.text = _configuracao!.diasParaPreBloqueio.toString();
-          _alertaAtivo = _configuracao!.alertaAtivo;
-          _emailAtivo = _configuracao!.emailAtivo;
+          _diasPreBloqueioController.text = _configuracao!.diasPreBloqueio.toString();
+          _diasBloqueadoController.text = _configuracao!.diasBloqueado.toString();
+          _diasExtremamenteCriticoController.text = _configuracao!.diasExtremamenteCritico.toString();
         }
       } else if (response.statusCode == 403) {
         _errorMessage = 'Você não tem permissão para acessar configurações';
@@ -140,6 +136,30 @@ class _WebSettingsScreenState extends State<WebSettingsScreen> {
   }
 
   Future<void> _salvarConfiguracoes() async {
+    // Validação da hierarquia de dias
+    final diasPre = int.tryParse(_diasPreBloqueioController.text) ?? 60;
+    final diasBloq = int.tryParse(_diasBloqueadoController.text) ?? 30;
+    final diasExt = int.tryParse(_diasExtremamenteCriticoController.text) ?? 7;
+
+    if (diasPre <= diasBloq) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Dias para Pré-Bloqueio deve ser maior que Bloqueado'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+    if (diasBloq <= diasExt) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Dias para Bloqueado deve ser maior que Extremamente Crítico'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isSaving = true);
 
     try {
@@ -147,10 +167,9 @@ class _WebSettingsScreenState extends State<WebSettingsScreen> {
       final unidadeId = authService.unidadeAtiva?.id;
 
       final body = jsonEncode({
-        'dias_para_critico': int.parse(_diasCriticoController.text),
-        'dias_para_pre_bloqueio': int.parse(_diasPreBloqueioController.text),
-        'alerta_ativo': _alertaAtivo,
-        'email_ativo': _emailAtivo,
+        'dias_pre_bloqueio': diasPre,
+        'dias_bloqueado': diasBloq,
+        'dias_extremamente_critico': diasExt,
         if (unidadeId != null) 'unidade_id': unidadeId,
       });
 
@@ -272,60 +291,27 @@ class _WebSettingsScreenState extends State<WebSettingsScreen> {
             icon: Icons.timer_outlined,
             children: [
               _buildNumberField(
-                label: 'Dias para status Crítico',
-                hint: 'Produtos com validade em até X dias',
-                controller: _diasCriticoController,
+                label: 'Dias para Pré-Bloqueio',
+                hint: 'Alerta amarelo (padrão: 60 dias)',
+                controller: _diasPreBloqueioController,
                 suffix: 'dias',
+                color: const Color(0xFFFFC107),
               ),
               const SizedBox(height: AppSpacing.lg),
               _buildNumberField(
-                label: 'Dias para status Pré-Bloqueio',
-                hint: 'Produtos com validade entre Crítico e X dias',
-                controller: _diasPreBloqueioController,
+                label: 'Dias para Bloqueado',
+                hint: 'Alerta laranja (padrão: 30 dias)',
+                controller: _diasBloqueadoController,
                 suffix: 'dias',
+                color: const Color(0xFFFF9800),
               ),
-            ],
-          ),
-
-          const SizedBox(height: AppSpacing.lg),
-
-          // Card de configurações de notificações
-          _buildConfigCard(
-            title: 'Notificações',
-            icon: Icons.notifications_outlined,
-            children: [
-              SwitchListTile(
-                title: Text(
-                  'Alertas Ativos',
-                  style: GoogleFonts.poppins(fontWeight: FontWeight.w500),
-                ),
-                subtitle: Text(
-                  'Exibir alertas visuais para itens críticos',
-                  style: GoogleFonts.poppins(
-                    fontSize: AppFontSizes.caption,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                value: _alertaAtivo,
-                onChanged: (v) => setState(() => _alertaAtivo = v),
-                activeColor: AppColors.primary,
-              ),
-              const Divider(),
-              SwitchListTile(
-                title: Text(
-                  'Notificações por Email',
-                  style: GoogleFonts.poppins(fontWeight: FontWeight.w500),
-                ),
-                subtitle: Text(
-                  'Enviar resumo diário de itens críticos por email',
-                  style: GoogleFonts.poppins(
-                    fontSize: AppFontSizes.caption,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                value: _emailAtivo,
-                onChanged: (v) => setState(() => _emailAtivo = v),
-                activeColor: AppColors.primary,
+              const SizedBox(height: AppSpacing.lg),
+              _buildNumberField(
+                label: 'Dias para Extremamente Crítico',
+                hint: 'Alerta vermelho (padrão: 7 dias)',
+                controller: _diasExtremamenteCriticoController,
+                suffix: 'dias',
+                color: const Color(0xFFF44336),
               ),
             ],
           ),
@@ -417,15 +403,31 @@ class _WebSettingsScreenState extends State<WebSettingsScreen> {
     required String hint,
     required TextEditingController controller,
     String? suffix,
+    Color? color,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w500,
-          ),
+        Row(
+          children: [
+            if (color != null) ...[
+              Container(
+                width: 16,
+                height: 16,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+            ],
+            Text(
+              label,
+              style: GoogleFonts.poppins(
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: AppSpacing.xs),
         Text(
@@ -451,11 +453,11 @@ class _WebSettingsScreenState extends State<WebSettingsScreen> {
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppRadius.md),
-                borderSide: BorderSide(color: AppColors.divider),
+                borderSide: BorderSide(color: color ?? AppColors.divider),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppRadius.md),
-                borderSide: BorderSide(color: AppColors.primary, width: 2),
+                borderSide: BorderSide(color: color ?? AppColors.primary, width: 2),
               ),
             ),
           ),
@@ -481,24 +483,76 @@ class _WebSettingsScreenState extends State<WebSettingsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Como funcionam os status?',
+                  'Como funcionam os status de validade?',
                   style: GoogleFonts.poppins(
                     fontWeight: FontWeight.w600,
                     color: AppColors.info,
                   ),
                 ),
-                const SizedBox(height: AppSpacing.xs),
-                Text(
-                  '• Vencido: data de validade já passou\n'
-                  '• Crítico: faltam até ${_diasCriticoController.text} dias\n'
-                  '• Pré-Bloqueio: entre ${_diasCriticoController.text} e ${_diasPreBloqueioController.text} dias\n'
-                  '• OK: mais de ${_diasPreBloqueioController.text} dias',
-                  style: GoogleFonts.poppins(
-                    fontSize: AppFontSizes.caption,
-                    color: AppColors.textPrimary,
-                  ),
+                const SizedBox(height: AppSpacing.sm),
+                _buildStatusLegend(
+                  color: Colors.black,
+                  label: 'Vencido',
+                  description: 'Data de validade já passou',
+                ),
+                _buildStatusLegend(
+                  color: const Color(0xFFF44336),
+                  label: 'Extremamente Crítico',
+                  description: 'Até ${_diasExtremamenteCriticoController.text} dias',
+                ),
+                _buildStatusLegend(
+                  color: const Color(0xFFFF9800),
+                  label: 'Bloqueado',
+                  description: 'Entre ${_diasExtremamenteCriticoController.text} e ${_diasBloqueadoController.text} dias',
+                ),
+                _buildStatusLegend(
+                  color: const Color(0xFFFFC107),
+                  label: 'Pré-Bloqueio',
+                  description: 'Entre ${_diasBloqueadoController.text} e ${_diasPreBloqueioController.text} dias',
+                ),
+                _buildStatusLegend(
+                  color: const Color(0xFF4CAF50),
+                  label: 'OK',
+                  description: 'Mais de ${_diasPreBloqueioController.text} dias',
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusLegend({
+    required Color color,
+    required String label,
+    required String description,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Text(
+            '$label: ',
+            style: GoogleFonts.poppins(
+              fontSize: AppFontSizes.caption,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          Text(
+            description,
+            style: GoogleFonts.poppins(
+              fontSize: AppFontSizes.caption,
+              color: AppColors.textSecondary,
             ),
           ),
         ],

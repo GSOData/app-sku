@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 import '../utils/constants.dart';
 import 'home_screen.dart';
 import 'web/web_dashboard_screen.dart';
@@ -105,6 +106,16 @@ class _LoginScreenState extends State<LoginScreen>
     if (!mounted) return;
 
     if (success) {
+      // Inicializa o NotificationService com token e unidade
+      final notificationService = Provider.of<NotificationService>(context, listen: false);
+      final usuario = authService.usuario;
+      if (usuario != null && authService.accessToken != null) {
+        notificationService.setAccessToken(authService.accessToken!);
+        if (usuario.unidadeAtual != null) {
+          notificationService.setUnidadeId(usuario.unidadeAtual!.id);
+        }
+      }
+      
       // Verifica se é Web/Desktop para redirecionar ao Dashboard Web
       final isWebLayout = kIsWeb || MediaQuery.of(context).size.width >= 800;
       

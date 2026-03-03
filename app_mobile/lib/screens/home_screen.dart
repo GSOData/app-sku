@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/auth_service.dart';
 import '../utils/constants.dart';
+import '../widgets/mobile_unit_selector.dart';
+import '../widgets/notification_bell.dart';
 import 'login_screen.dart';
 import 'sku_list_screen.dart';
 import 'critical_items_screen.dart';
@@ -64,6 +66,10 @@ class HomeScreen extends StatelessWidget {
         foregroundColor: AppColors.onPrimary,
         elevation: 0,
         actions: [
+          // Sininho de Notificações
+          const NotificationBell(forAppBar: true),
+          // Seletor de Unidade no AppBar
+          const MobileUnitSelectorButton(),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () => _handleLogout(context),
@@ -110,14 +116,13 @@ class HomeScreen extends StatelessWidget {
                                 color: AppColors.textPrimary,
                               ),
                             ),
-                            if (usuario?.cargo != null)
-                              Text(
-                                usuario!.cargo!,
-                                style: GoogleFonts.poppins(
-                                  fontSize: AppFontSizes.body,
-                                  color: AppColors.textSecondary,
-                                ),
+                            Text(
+                              usuario?.perfilLabel ?? 'Usuário',
+                              style: GoogleFonts.poppins(
+                                fontSize: AppFontSizes.body,
+                                color: AppColors.textSecondary,
                               ),
+                            ),
                           ],
                         ),
                       ),
@@ -144,7 +149,7 @@ class HomeScreen extends StatelessWidget {
               Expanded(
                 child: Column(
                   children: [
-                    // Consulta Validade
+                    // Consulta Validade - Visível para todos
                     _buildMenuButton(
                       context,
                       icon: Icons.search,
@@ -163,7 +168,7 @@ class HomeScreen extends StatelessWidget {
 
                     const SizedBox(height: AppSpacing.md),
 
-                    // Itens em Criticidade
+                    // Itens em Criticidade - Visível para todos
                     _buildMenuButton(
                       context,
                       icon: Icons.warning_amber_rounded,
@@ -180,24 +185,25 @@ class HomeScreen extends StatelessWidget {
                       },
                     ),
 
-                    const SizedBox(height: AppSpacing.md),
-
-                    // Estoque Inicial
-                    _buildMenuButton(
-                      context,
-                      icon: Icons.inventory_2_outlined,
-                      title: 'Estoque Inicial',
-                      subtitle: 'Visão geral do estoque',
-                      color: AppColors.success,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const StockReportScreen(),
-                          ),
-                        );
-                      },
-                    ),
+                    // Estoque Inicial - Visível apenas para GERENTE e DIRETORIA
+                    if (usuario?.canViewDashboard ?? false) ...[
+                      const SizedBox(height: AppSpacing.md),
+                      _buildMenuButton(
+                        context,
+                        icon: Icons.inventory_2_outlined,
+                        title: 'Estoque Inicial',
+                        subtitle: 'Visão geral do estoque',
+                        color: AppColors.success,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const StockReportScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
                   ],
                 ),
               ),

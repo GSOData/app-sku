@@ -290,29 +290,33 @@ class WebNavigationMenu extends StatelessWidget {
     final usuario = authService.usuario;
     
     // Valores padrão para usuários não autenticados ou sem papel definido
-    final canEdit = usuario?.canEdit ?? false;
     final canUpload = usuario?.canUpload ?? false;
     final canManageUsers = usuario?.canManageUsers ?? false;
     final canManageSettings = usuario?.canManageSettings ?? false;
     final isDiretoria = usuario?.isDiretoria ?? false;
+    final canViewDashboard = usuario?.canViewDashboard ?? false;
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // ============================================
-        // SEÇÃO PRINCIPAL - Todos os papéis
+        // SEÇÃO PRINCIPAL - Menus visíveis por papel
         // ============================================
         if (!isCollapsed)
           _buildSectionLabel('PRINCIPAL'),
         
-        _buildMenuItem(
-          context,
-          icon: Icons.dashboard_outlined,
-          activeIcon: Icons.dashboard,
-          label: isDiretoria ? 'Dashboard Consolidado' : 'Dashboard',
-          section: WebMenuSection.dashboard,
-          onTap: () => _navigateTo(context, WebMenuSection.dashboard),
-        ),
+        // Dashboard - Visível apenas para GERENTE e DIRETORIA
+        if (canViewDashboard)
+          _buildMenuItem(
+            context,
+            icon: Icons.dashboard_outlined,
+            activeIcon: Icons.dashboard,
+            label: isDiretoria ? 'Dashboard Consolidado' : 'Dashboard',
+            section: WebMenuSection.dashboard,
+            onTap: () => _navigateTo(context, WebMenuSection.dashboard),
+          ),
+        
+        // Lista de SKUs - Visível para todos
         _buildMenuItem(
           context,
           icon: Icons.inventory_2_outlined,
@@ -321,6 +325,8 @@ class WebNavigationMenu extends StatelessWidget {
           section: WebMenuSection.skus,
           onTap: () => _navigateTo(context, WebMenuSection.skus),
         ),
+        
+        // Itens Críticos - Visível para todos
         _buildMenuItem(
           context,
           icon: Icons.warning_amber_outlined,
@@ -331,14 +337,17 @@ class WebNavigationMenu extends StatelessWidget {
           badgeColor: AppColors.error,
           onTap: () => _navigateTo(context, WebMenuSection.critical),
         ),
-        _buildMenuItem(
-          context,
-          icon: Icons.assessment_outlined,
-          activeIcon: Icons.assessment,
-          label: 'Relatório Estoque',
-          section: WebMenuSection.stockReport,
-          onTap: () => _navigateTo(context, WebMenuSection.stockReport),
-        ),
+        
+        // Relatório Estoque - Visível apenas para GERENTE e DIRETORIA
+        if (canViewDashboard)
+          _buildMenuItem(
+            context,
+            icon: Icons.assessment_outlined,
+            activeIcon: Icons.assessment,
+            label: 'Relatório Estoque',
+            section: WebMenuSection.stockReport,
+            onTap: () => _navigateTo(context, WebMenuSection.stockReport),
+          ),
 
         // ============================================
         // SEÇÃO GESTÃO - Apenas GERENTE e DIRETORIA

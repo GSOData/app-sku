@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 import '../utils/constants.dart';
 import '../screens/login_screen.dart';
 import 'web_navigation_menu.dart';
+import 'notification_bell.dart';
 
 /// Breakpoints para responsividade
 class Breakpoints {
@@ -215,19 +217,8 @@ class _ResponsiveLayoutState extends State<ResponsiveLayout> {
 
           const SizedBox(width: AppSpacing.md),
 
-          // Notificações (placeholder)
-          IconButton(
-            icon: Badge(
-              label: const Text('3'),
-              child: Icon(Icons.notifications_outlined, color: AppColors.textSecondary),
-            ),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Notificações em breve!')),
-              );
-            },
-            tooltip: 'Notificações',
-          ),
+          // Sininho de Notificações
+          const NotificationBell(forAppBar: false),
 
           const SizedBox(width: AppSpacing.sm),
 
@@ -276,7 +267,7 @@ class _ResponsiveLayoutState extends State<ResponsiveLayout> {
                       ),
                     ),
                     Text(
-                      usuario?.cargo ?? 'Administrador',
+                      usuario?.perfilLabel ?? 'Usuário',
                       style: GoogleFonts.poppins(
                         fontSize: AppFontSizes.caption,
                         color: AppColors.textSecondary,

@@ -119,6 +119,23 @@ class Usuario {
   
   /// Verifica se pode ver dashboard consolidado (DIRETORIA)
   bool get canViewConsolidated => isDiretoria;
+  
+  /// Verifica se pode ver Dashboard e Relatório Estoque (GERENTE ou DIRETORIA)
+  bool get canViewDashboard => isGerente || isDiretoria;
+  
+  /// Retorna o perfil formatado para exibição na UI (ex: "Vendedor", "Gerente", "Diretoria")
+  String get perfilLabel {
+    switch (maxPapel) {
+      case 'VENDEDOR':
+        return 'Vendedor';
+      case 'GERENTE':
+        return 'Gerente';
+      case 'DIRETORIA':
+        return 'Diretoria';
+      default:
+        return 'Usuário';
+    }
+  }
 }
 
 /// Serviço de autenticação com ChangeNotifier para gerenciar estado
