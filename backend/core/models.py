@@ -221,11 +221,12 @@ class ConfiguracaoAlerta(BaseModel):
     Configurações de alertas de validade.
     Pode ser global (unidade=null) ou específica por unidade.
     
-    Regras de status:
+    Regras de status (NOVAS):
     - Vencido: data_validade < hoje
-    - Crítico: (data_validade - hoje) <= dias_para_critico (padrão: 30 dias)
-    - Pré-Bloqueio: entre dias_para_critico+1 e dias_para_pre_bloqueio (31-45 dias)
-    - OK: acima de dias_para_pre_bloqueio
+    - Extremamente Crítico: (data_validade - hoje) <= dias_extremamente_critico (padrão: 7 dias)
+    - Bloqueado: entre dias_extremamente_critico+1 e dias_bloqueado (8-30 dias)
+    - Pré-Bloqueio: entre dias_bloqueado+1 e dias_pre_bloqueio (31-60 dias)
+    - OK: acima de dias_pre_bloqueio
     """
     unidade = models.OneToOneField(
         UnidadeNegocio,
@@ -236,17 +237,23 @@ class ConfiguracaoAlerta(BaseModel):
         blank=True,
         help_text='Se vazio, será configuração global padrão'
     )
-    dias_para_critico = models.PositiveIntegerField(
-        'Dias para Crítico',
+    dias_pre_bloqueio = models.PositiveIntegerField(
+        'Dias para Pré-Bloqueio',
+        default=60,
+        validators=[MinValueValidator(1)],
+        help_text='Quantidade de dias antes do vencimento para status PRÉ-BLOQUEIO (padrão: 60)'
+    )
+    dias_bloqueado = models.PositiveIntegerField(
+        'Dias para Bloqueado',
         default=30,
         validators=[MinValueValidator(1)],
-        help_text='Quantidade de dias antes do vencimento para status CRÍTICO'
+        help_text='Quantidade de dias antes do vencimento para status BLOQUEADO (padrão: 30)'
     )
-    dias_para_pre_bloqueio = models.PositiveIntegerField(
-        'Dias para Pré-Bloqueio',
-        default=45,
+    dias_extremamente_critico = models.PositiveIntegerField(
+        'Dias para Extremamente Crítico',
+        default=7,
         validators=[MinValueValidator(1)],
-        help_text='Quantidade de dias antes do vencimento para status PRÉ-BLOQUEIO'
+        help_text='Quantidade de dias antes do vencimento para status EXTREMAMENTE CRÍTICO (padrão: 7)'
     )
 
     class Meta:
@@ -260,11 +267,13 @@ class ConfiguracaoAlerta(BaseModel):
 
     def clean(self):
         from django.core.exceptions import ValidationError
-        if self.dias_para_pre_bloqueio <= self.dias_para_critico:
-            raise ValidationError({
-                'dias_para_pre_bloqueio': 
-                'Dias para pré-bloqueio deve ser maior que dias para crítico.'
-            })
+        errors = {}
+        if self.dias_pre_bloqueio <= self.dias_bloqueado:
+            errors['dias_pre_bloqueio'] = 'Dias para pré-bloqueio deve ser maior que dias para bloqueado.'
+        if self.dias_bloqueado <= self.dias_extremamente_critico:
+            errors['dias_bloqueado'] = 'Dias para bloqueado deve ser maior que dias para extremamente crítico.'
+        if errors:
+            raise ValidationError(errors)
 
 
 class SKU(BaseModel):
@@ -399,6 +408,13 @@ class SKU(BaseModel):
         """
         Calcula o status do SKU baseado no lote mais próximo do vencimento.
         
+        Status (NOVAS REGRAS):
+        - VENCIDO: data_validade < hoje
+        - EXTREMAMENTE_CRITICO: dias_restantes <= dias_extremamente_critico (padrão: 7)
+        - BLOQUEADO: dias_restantes <= dias_bloqueado (padrão: 30)
+        - PRE_BLOQUEIO: dias_restantes <= dias_pre_bloqueio (padrão: 60)
+        - OK: acima de dias_pre_bloqueio
+        
         Returns:
             dict com 'status', 'cor', 'dias_restantes', 'lote'
         """
@@ -425,9 +441,10 @@ class SKU(BaseModel):
                     ativo=True
                 ).first()
         
-        # Valores padrão se não houver configuração
-        dias_critico = config.dias_para_critico if config else 30
-        dias_pre_bloqueio = config.dias_para_pre_bloqueio if config else 45
+        # Valores padrão se não houver configuração (NOVOS DEFAULTS)
+        dias_pre_bloqueio = config.dias_pre_bloqueio if config else 60
+        dias_bloqueado = config.dias_bloqueado if config else 30
+        dias_extremamente_critico = config.dias_extremamente_critico if config else 7
         
         hoje = date.today()
         dias_restantes = (lote.data_validade - hoje).days
@@ -439,10 +456,17 @@ class SKU(BaseModel):
                 'dias_restantes': dias_restantes,
                 'lote': lote
             }
-        elif dias_restantes <= dias_critico:
+        elif dias_restantes <= dias_extremamente_critico:
             return {
-                'status': 'CRITICO',
+                'status': 'EXTREMAMENTE_CRITICO',
                 'cor': 'vermelho',
+                'dias_restantes': dias_restantes,
+                'lote': lote
+            }
+        elif dias_restantes <= dias_bloqueado:
+            return {
+                'status': 'BLOQUEADO',
+                'cor': 'laranja',
                 'dias_restantes': dias_restantes,
                 'lote': lote
             }

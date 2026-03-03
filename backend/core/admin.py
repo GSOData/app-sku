@@ -45,7 +45,7 @@ class UnidadeNegocioAdmin(admin.ModelAdmin):
 
 @admin.register(ConfiguracaoAlerta)
 class ConfiguracaoAlertaAdmin(admin.ModelAdmin):
-    list_display = ['__str__', 'dias_para_critico', 'dias_para_pre_bloqueio', 'ativo']
+    list_display = ['__str__', 'dias_pre_bloqueio', 'dias_bloqueado', 'dias_extremamente_critico', 'ativo']
     list_filter = ['ativo', 'unidade']
 
 

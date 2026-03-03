@@ -36,6 +36,7 @@ from .views import (
     RelatorioCriticidadeView,
     UploadEstoqueView,
     UploadContagensView,
+    NotificacoesAlertaView,
 )
 
 app_name = 'core'
@@ -65,6 +66,9 @@ urlpatterns = [
     
     # Relatório de Criticidade (endpoint customizado)
     path('relatorio-criticidade/', RelatorioCriticidadeView.as_view(), name='relatorio-criticidade'),
+    
+    # Notificações de Alerta de Validade
+    path('notificacoes/', NotificacoesAlertaView.as_view(), name='notificacoes'),
     
     # Upload de arquivos
     path('upload/grade-020502/', UploadEstoqueView.as_view(), name='upload-grade'),

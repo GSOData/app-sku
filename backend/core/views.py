@@ -55,6 +55,7 @@ from .serializers import (
     LoteValidadeResumoSerializer,
     MovimentacaoEstoqueSerializer,
     LogConsultaSerializer,
+    NotificacaoAlertaSerializer,
     STATUS_CORES,
     STATUS_LABELS,
 )
@@ -1079,3 +1080,114 @@ class UploadContagensView(APIView):
                 {'error': f'Erro ao processar arquivo: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+# =============================================================================
+# NOTIFICAÇÕES DE ALERTA DE VALIDADE
+# =============================================================================
+class NotificacoesAlertaView(UnidadeAccessMixin, APIView):
+    """
+    GET /api/notificacoes/
+    
+    Retorna lista de lotes em estado de alerta (Pré-Bloqueio, Bloqueado, Extremamente Crítico).
+    
+    Query Params:
+    - unidade_id: ID da unidade de negócio (obrigatório)
+    
+    Retorna dados estruturados para exibição no sininho de notificações.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        # Validar unidade_id
+        unidade_id = self.get_unidade_ativa()
+        if unidade_id is None:
+            return Response(
+                {'error': 'Parâmetro unidade_id é obrigatório e deve ser uma unidade válida'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Buscar configuração da unidade
+        try:
+            unidade = UnidadeNegocio.objects.get(id=unidade_id, ativo=True)
+        except UnidadeNegocio.DoesNotExist:
+            return Response(
+                {'error': 'Unidade não encontrada'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        config = getattr(unidade, 'configuracao_alerta', None)
+        if config is None:
+            config = ConfiguracaoAlerta.objects.filter(
+                unidade__isnull=True,
+                ativo=True
+            ).first()
+        
+        # Valores de dias para cada faixa
+        dias_pre_bloqueio = config.dias_pre_bloqueio if config else 60
+        dias_bloqueado = config.dias_bloqueado if config else 30
+        dias_extremamente_critico = config.dias_extremamente_critico if config else 7
+        
+        hoje = date.today()
+        
+        # Buscar lotes com validade dentro das faixas de alerta
+        # Lotes com data_validade <= hoje + dias_pre_bloqueio e data_validade >= hoje
+        from datetime import timedelta
+        data_limite_pre_bloqueio = hoje + timedelta(days=dias_pre_bloqueio)
+        
+        lotes_alerta = LoteValidade.objects.filter(
+            ativo=True,
+            qtd_estoque__gt=0,
+            sku__unidade_negocio_id=unidade_id,
+            data_validade__isnull=False,
+            data_validade__gte=hoje,  # Não vencidos
+            data_validade__lte=data_limite_pre_bloqueio,  # Dentro do período de alerta
+        ).exclude(
+            numero_lote='BASE'  # Exclui lote base
+        ).select_related(
+            'sku',
+            'sku__unidade_negocio'
+        ).order_by('data_validade')
+        
+        # Montar resposta com status calculado
+        notificacoes = []
+        for lote in lotes_alerta:
+            dias_restantes = (lote.data_validade - hoje).days
+            
+            # Determinar status baseado nos dias
+            if dias_restantes <= dias_extremamente_critico:
+                status_val = 'EXTREMAMENTE_CRITICO'
+            elif dias_restantes <= dias_bloqueado:
+                status_val = 'BLOQUEADO'
+            else:
+                status_val = 'PRE_BLOQUEIO'
+            
+            notificacoes.append({
+                'lote_id': lote.id,
+                'sku_id': lote.sku.id,
+                'sku_codigo': lote.sku.codigo_sku,
+                'sku_nome': lote.sku.nome_produto,
+                'numero_lote': lote.numero_lote,
+                'data_validade': lote.data_validade,
+                'dias_restantes': dias_restantes,
+                'qtd_estoque': lote.qtd_estoque,
+                'status': status_val,
+                'status_label': STATUS_LABELS.get(status_val, 'Indefinido'),
+                'status_cor': STATUS_CORES.get(status_val, '#9E9E9E'),
+                'unidade_id': unidade.id,
+                'unidade_codigo': unidade.codigo_unb,
+                'unidade_nome': unidade.nome,
+            })
+        
+        # Resumo por status
+        resumo = {
+            'extremamente_critico': len([n for n in notificacoes if n['status'] == 'EXTREMAMENTE_CRITICO']),
+            'bloqueado': len([n for n in notificacoes if n['status'] == 'BLOQUEADO']),
+            'pre_bloqueio': len([n for n in notificacoes if n['status'] == 'PRE_BLOQUEIO']),
+            'total': len(notificacoes),
+        }
+        
+        return Response({
+            'resumo': resumo,
+            'notificacoes': NotificacaoAlertaSerializer(notificacoes, many=True).data,
+        })

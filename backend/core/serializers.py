@@ -24,16 +24,18 @@ Usuario = get_user_model()
 # CORES PARA STATUS (Hexadecimal para Flutter)
 # =============================================================================
 STATUS_CORES = {
-    'VENCIDO': '#000000',       # Preto
-    'CRITICO': '#F44336',       # Vermelho (Material Red)
-    'PRE_BLOQUEIO': '#FFC107',  # Amarelo (Material Amber)
-    'OK': '#4CAF50',            # Verde (Material Green)
-    'SEM_ESTOQUE': '#9E9E9E',   # Cinza (Material Grey)
+    'VENCIDO': '#000000',               # Preto
+    'EXTREMAMENTE_CRITICO': '#F44336',  # Vermelho (Material Red)
+    'BLOQUEADO': '#FF9800',             # Laranja (Material Orange)
+    'PRE_BLOQUEIO': '#FFC107',          # Amarelo (Material Amber)
+    'OK': '#4CAF50',                    # Verde (Material Green)
+    'SEM_ESTOQUE': '#9E9E9E',           # Cinza (Material Grey)
 }
 
 STATUS_LABELS = {
     'VENCIDO': 'Vencido',
-    'CRITICO': 'Crítico',
+    'EXTREMAMENTE_CRITICO': 'Extremamente Crítico',
+    'BLOQUEADO': 'Bloqueado',
     'PRE_BLOQUEIO': 'Pré-Bloqueio',
     'OK': 'OK',
     'SEM_ESTOQUE': 'Sem Estoque',
@@ -174,7 +176,7 @@ class LoginResponseSerializer(serializers.Serializer):
 # CONFIGURAÇÃO DE ALERTA
 # =============================================================================
 class ConfiguracaoAlertaSerializer(serializers.ModelSerializer):
-    """Serializer para ConfiguracaoAlerta."""
+    """Serializer para ConfiguracaoAlerta com novos campos de dias."""
     unidade = UnidadeNegocioResumoSerializer(read_only=True)
     unidade_id = serializers.PrimaryKeyRelatedField(
         queryset=UnidadeNegocio.objects.filter(ativo=True),
@@ -190,13 +192,37 @@ class ConfiguracaoAlertaSerializer(serializers.ModelSerializer):
             'id',
             'unidade',
             'unidade_id',
-            'dias_para_critico',
-            'dias_para_pre_bloqueio',
+            'dias_pre_bloqueio',
+            'dias_bloqueado',
+            'dias_extremamente_critico',
             'ativo',
             'created_at',
             'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def validate(self, attrs):
+        """Valida hierarquia dos dias: pre_bloqueio > bloqueado > extremamente_critico"""
+        dias_pre = attrs.get('dias_pre_bloqueio', 60)
+        dias_bloq = attrs.get('dias_bloqueado', 30)
+        dias_ext = attrs.get('dias_extremamente_critico', 7)
+        
+        # Se estamos atualizando, pegar valores existentes como fallback
+        if self.instance:
+            dias_pre = attrs.get('dias_pre_bloqueio', self.instance.dias_pre_bloqueio)
+            dias_bloq = attrs.get('dias_bloqueado', self.instance.dias_bloqueado)
+            dias_ext = attrs.get('dias_extremamente_critico', self.instance.dias_extremamente_critico)
+        
+        if dias_pre <= dias_bloq:
+            raise serializers.ValidationError({
+                'dias_pre_bloqueio': 'Dias para pré-bloqueio deve ser maior que dias para bloqueado.'
+            })
+        if dias_bloq <= dias_ext:
+            raise serializers.ValidationError({
+                'dias_bloqueado': 'Dias para bloqueado deve ser maior que dias para extremamente crítico.'
+            })
+        
+        return attrs
     
     def validate(self, attrs):
         dias_critico = attrs.get('dias_para_critico', 30)
@@ -601,3 +627,27 @@ class LogConsultaSerializer(serializers.ModelSerializer):
             'created_at',
         ]
         read_only_fields = '__all__'
+
+
+# =============================================================================
+# NOTIFICAÇÕES DE ALERTA DE VALIDADE
+# =============================================================================
+class NotificacaoAlertaSerializer(serializers.Serializer):
+    """
+    Serializer para notificações de alerta de validade.
+    Retorna lotes em estado de alerta (Pré-Bloqueio, Bloqueado, Extremamente Crítico).
+    """
+    id = serializers.IntegerField(source='lote_id')
+    sku_id = serializers.IntegerField()
+    sku_codigo = serializers.CharField()
+    sku_nome = serializers.CharField()
+    numero_lote = serializers.CharField()
+    data_validade = serializers.DateField()
+    dias_restantes = serializers.IntegerField()
+    qtd_estoque = serializers.IntegerField()
+    status = serializers.CharField()
+    status_label = serializers.CharField()
+    status_cor = serializers.CharField()
+    unidade_id = serializers.IntegerField()
+    unidade_codigo = serializers.CharField()
+    unidade_nome = serializers.CharField()
