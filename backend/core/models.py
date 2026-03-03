@@ -682,6 +682,70 @@ class MovimentacaoEstoque(BaseModel):
         return f'{self.tipo} - {self.sku.codigo_sku} ({self.quantidade})'
 
 
+class HistoricoUpload(BaseModel):
+    """
+    Histórico de uploads de arquivos (Grade 020502 ou Contagens).
+    Registra cada processamento de arquivo para auditoria.
+    """
+    TIPO_ARQUIVO_CHOICES = [
+        ('GRADE', 'Grade 020502'),
+        ('CONTAGEM', 'Contagem'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('SUCESSO', 'Sucesso'),
+        ('ERRO', 'Erro'),
+    ]
+    
+    tipo_arquivo = models.CharField(
+        'Tipo de Arquivo',
+        max_length=20,
+        choices=TIPO_ARQUIVO_CHOICES
+    )
+    usuario = models.ForeignKey(
+        Usuario,
+        on_delete=models.SET_NULL,
+        related_name='uploads',
+        verbose_name='Usuário',
+        null=True
+    )
+    unidade_negocio = models.ForeignKey(
+        UnidadeNegocio,
+        on_delete=models.CASCADE,
+        related_name='historico_uploads',
+        verbose_name='Unidade de Negócio'
+    )
+    status = models.CharField(
+        'Status',
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='SUCESSO'
+    )
+    linhas_processadas = models.PositiveIntegerField(
+        'Linhas Processadas',
+        default=0
+    )
+    nome_arquivo = models.CharField(
+        'Nome do Arquivo',
+        max_length=255,
+        blank=True,
+        null=True
+    )
+    mensagem_erro = models.TextField(
+        'Mensagem de Erro',
+        blank=True,
+        null=True
+    )
+
+    class Meta:
+        verbose_name = 'Histórico de Upload'
+        verbose_name_plural = 'Históricos de Upload'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.tipo_arquivo} - {self.unidade_negocio.codigo_unb} ({self.created_at.strftime("%d/%m/%Y %H:%M")})'
+
+
 class LogConsulta(BaseModel):
     """
     Log de consultas realizadas para auditoria.

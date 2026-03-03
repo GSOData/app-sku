@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import '../services/auth_service.dart';
+import '../services/sku_service.dart';
 import '../utils/constants.dart';
 import '../widgets/mobile_unit_selector.dart';
 import '../widgets/notification_bell.dart';
@@ -10,8 +12,41 @@ import 'sku_list_screen.dart';
 import 'critical_items_screen.dart';
 import 'stock_report_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  late SkuService _skuService;
+  UltimoUpload? _ultimoUpload;
+  bool _isLoadingUpload = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final authService = Provider.of<AuthService>(context, listen: false);
+    _skuService = SkuService(authService: authService);
+    _loadUltimoUpload();
+  }
+
+  Future<void> _loadUltimoUpload() async {
+    setState(() => _isLoadingUpload = true);
+    try {
+      final upload = await _skuService.getUltimoUpload();
+      if (mounted) {
+        setState(() => _ultimoUpload = upload);
+      }
+    } catch (e) {
+      debugPrint('Erro ao carregar último upload: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingUpload = false);
+      }
+    }
+  }
 
   Future<void> _handleLogout(BuildContext context) async {
     final confirm = await showDialog<bool>(
@@ -207,9 +242,50 @@ class HomeScreen extends StatelessWidget {
                   ],
                 ),
               ),
+              
+              // Rodapé de última atualização
+              _buildUltimaAtualizacao(),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// Widget do rodapé com data da última atualização de estoque
+  Widget _buildUltimaAtualizacao() {
+    String texto;
+    
+    if (_isLoadingUpload) {
+      texto = 'Verificando última atualização...';
+    } else if (_ultimoUpload?.dataUpload != null) {
+      final dateFormat = DateFormat('dd/MM/yyyy');
+      final timeFormat = DateFormat('HH:mm');
+      final data = _ultimoUpload!.dataUpload!;
+      texto = 'Última atualização de estoque: ${dateFormat.format(data)} às ${timeFormat.format(data)}';
+    } else {
+      texto = 'Nenhuma atualização recente';
+    }
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.update,
+            size: 14,
+            color: AppColors.textSecondary.withOpacity(0.7),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            texto,
+            style: GoogleFonts.poppins(
+              fontSize: 11,
+              color: AppColors.textSecondary.withOpacity(0.7),
+            ),
+          ),
+        ],
       ),
     );
   }

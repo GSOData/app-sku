@@ -8,6 +8,7 @@ import '../../widgets/responsive_layout.dart';
 import '../../widgets/web_navigation_menu.dart';
 import '../../services/auth_service.dart';
 import '../../services/upload_service.dart' hide UnidadeNegocio;
+import '../../services/sku_service.dart' hide AuthException;
 import '../login_screen.dart';
 
 /// Tela de Upload de Arquivos (Web)
@@ -24,10 +25,12 @@ class WebUploadScreen extends StatefulWidget {
 
 class _WebUploadScreenState extends State<WebUploadScreen> {
   late UploadService _uploadService;
+  late SkuService _skuService;
   
   // Estados
   bool _isLoadingUnidades = true;
   bool _isUploading = false;
+  bool _isLoadingHistory = false;
   String? _uploadType; // 'grade' ou 'contagens'
   
   // Unidades de Negócio
@@ -38,15 +41,17 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
   String? _selectedFileName;
   Uint8List? _selectedFileBytes;
   
-  // Histórico de uploads
-  final List<UploadHistoryItem> _uploadHistory = [];
+  // Histórico de uploads (da API)
+  List<HistoricoUpload> _uploadHistory = [];
 
   @override
   void initState() {
     super.initState();
     final authService = Provider.of<AuthService>(context, listen: false);
     _uploadService = UploadService(authService: authService);
+    _skuService = SkuService(authService: authService);
     _loadUnidades();
+    _loadUploadHistory();
   }
 
   Future<void> _loadUnidades() async {
@@ -63,6 +68,21 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
       if (mounted) {
         _showError('Erro ao carregar unidades: $e');
       }
+    }
+  }
+
+  Future<void> _loadUploadHistory() async {
+    setState(() => _isLoadingHistory = true);
+    
+    try {
+      final result = await _skuService.getHistoricoUpload();
+      setState(() {
+        _uploadHistory = result.results;
+        _isLoadingHistory = false;
+      });
+    } catch (e) {
+      setState(() => _isLoadingHistory = false);
+      debugPrint('Erro ao carregar histórico: $e');
     }
   }
 
@@ -657,23 +677,28 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
                     color: AppColors.textPrimary,
                   ),
                 ),
-                if (_uploadHistory.isNotEmpty)
-                  TextButton.icon(
-                    onPressed: () {
-                      setState(() => _uploadHistory.clear());
-                    },
-                    icon: const Icon(Icons.delete_sweep, size: 18),
-                    label: const Text('Limpar'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: AppColors.textSecondary,
-                    ),
-                  ),
+                IconButton(
+                  onPressed: _loadUploadHistory,
+                  icon: _isLoadingHistory
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh, size: 18),
+                  tooltip: 'Atualizar histórico',
+                ),
               ],
             ),
           ),
           const Divider(height: 1),
           
-          if (_uploadHistory.isEmpty)
+          if (_isLoadingHistory && _uploadHistory.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(AppSpacing.xl),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_uploadHistory.isEmpty)
             Padding(
               padding: const EdgeInsets.all(AppSpacing.xl),
               child: Center(
@@ -686,7 +711,7 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
                     ),
                     const SizedBox(height: AppSpacing.md),
                     Text(
-                      'Nenhum upload realizado nesta sessão',
+                      'Nenhum upload realizado',
                       style: GoogleFonts.poppins(
                         color: AppColors.textSecondary,
                       ),
@@ -710,9 +735,10 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
     );
   }
 
-  Widget _buildHistoryItem(UploadHistoryItem item) {
-    final statusColor = item.success ? AppColors.success : AppColors.error;
-    final statusIcon = item.success ? Icons.check_circle : Icons.error;
+  Widget _buildHistoryItem(HistoricoUpload item) {
+    final statusColor = item.isSuccess ? AppColors.success : AppColors.error;
+    final statusIcon = item.isSuccess ? Icons.check_circle : Icons.error;
+    final timestamp = _formatTimestamp(item.createdAt);
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(
@@ -728,7 +754,7 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
         child: Icon(statusIcon, color: statusColor, size: 24),
       ),
       title: Text(
-        item.fileName,
+        item.nomeArquivo,
         style: GoogleFonts.poppins(
           fontWeight: FontWeight.w600,
           color: AppColors.textPrimary,
@@ -738,15 +764,22 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '${item.tipo} • ${item.unidade} • ${item.timestamp}',
+            '${item.tipoArquivoDisplay} • ${item.unidadeNome} • $timestamp',
             style: GoogleFonts.poppins(
               fontSize: AppFontSizes.caption,
               color: AppColors.textSecondary,
             ),
           ),
-          if (item.message != null)
+          Text(
+            'Por ${item.usuarioNome}',
+            style: GoogleFonts.poppins(
+              fontSize: AppFontSizes.caption,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          if (item.mensagemErro != null && item.mensagemErro!.isNotEmpty)
             Text(
-              item.message!,
+              item.mensagemErro!,
               style: GoogleFonts.poppins(
                 fontSize: AppFontSizes.caption,
                 color: statusColor,
@@ -754,7 +787,7 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
             ),
         ],
       ),
-      trailing: item.recordCount > 0
+      trailing: item.linhasProcessadas > 0
           ? Container(
               padding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.sm,
@@ -765,7 +798,7 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
                 borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
               child: Text(
-                '${item.recordCount} registros',
+                '${item.linhasProcessadas} registros',
                 style: GoogleFonts.poppins(
                   fontSize: AppFontSizes.caption,
                   fontWeight: FontWeight.w600,
@@ -845,22 +878,7 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
         );
       }
 
-      // Adiciona ao histórico
-      final tipoLabel = _uploadType == 'grade' ? 'Estoque Total' : 'Validades';
-      
       setState(() {
-        _uploadHistory.insert(0, UploadHistoryItem(
-          fileName: _selectedFileName!,
-          tipo: tipoLabel,
-          unidade: _selectedUnidade!.nome,
-          timestamp: _formatTimestamp(DateTime.now()),
-          success: result.success,
-          recordCount: result.processed,
-          message: result.success 
-              ? 'Criados: ${result.created}, Atualizados: ${result.updated}'
-              : result.errorMessage ?? 'Erro desconhecido',
-        ));
-        
         _isUploading = false;
         _clearSelection();
       });
@@ -878,6 +896,9 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
       if (result.warnings.isNotEmpty) {
         _showWarning('Avisos: ${result.warnings.join(", ")}');
       }
+      
+      // Atualiza histórico da API
+      _loadUploadHistory();
 
     } on AuthException catch (e) {
       setState(() => _isUploading = false);
@@ -932,25 +953,4 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
       (route) => false,
     );
   }
-}
-
-/// Item do histórico de upload
-class UploadHistoryItem {
-  final String fileName;
-  final String tipo;
-  final String unidade;
-  final String timestamp;
-  final bool success;
-  final int recordCount;
-  final String? message;
-
-  UploadHistoryItem({
-    required this.fileName,
-    required this.tipo,
-    required this.unidade,
-    required this.timestamp,
-    required this.success,
-    required this.recordCount,
-    this.message,
-  });
 }

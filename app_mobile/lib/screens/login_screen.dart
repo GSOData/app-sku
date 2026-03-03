@@ -108,11 +108,10 @@ class _LoginScreenState extends State<LoginScreen>
     if (success) {
       // Inicializa o NotificationService com token e unidade
       final notificationService = Provider.of<NotificationService>(context, listen: false);
-      final usuario = authService.usuario;
-      if (usuario != null && authService.accessToken != null) {
+      if (authService.accessToken != null) {
         notificationService.setAccessToken(authService.accessToken!);
-        if (usuario.unidadeAtual != null) {
-          notificationService.setUnidadeId(usuario.unidadeAtual!.id);
+        if (authService.unidadeAtiva != null) {
+          notificationService.setUnidadeId(authService.unidadeAtiva!.id);
         }
       }
       

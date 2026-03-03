@@ -46,17 +46,11 @@ class _CriticalItemsScreenState extends State<CriticalItemsScreen> {
     });
 
     try {
-      // Busca todos os SKUs
-      final result = await _skuService.getSkus();
-
-      // Filtra apenas os itens problemáticos
-      final criticalItems = result.results.where((sku) {
-        final status = sku.statusTexto.toLowerCase();
-        return status == 'vencido' ||
-            status == 'crítico' ||
-            status.contains('pré') ||
-            status == 'critico'; // sem acento
-      }).toList();
+      // Usa o endpoint específico de criticidade (já paginado no backend)
+      final result = await _skuService.getRelatorioCriticidade();
+      
+      // Combina bloqueados e pré-bloqueio
+      final criticalItems = [...result.bloqueados, ...result.preBloqueio];
 
       // Ordena por prioridade (vencidos primeiro, depois críticos, depois pré-bloqueio)
       criticalItems.sort((a, b) {
@@ -73,19 +67,17 @@ class _CriticalItemsScreenState extends State<CriticalItemsScreen> {
         return diasA.compareTo(diasB);
       });
 
-      // Conta por categoria
+      // Conta por categoria (usando dados do backend)
       int vencidos = 0;
       int criticos = 0;
-      int preBloqueio = 0;
+      int preBloqueio = result.totalPreBloqueio;
 
-      for (final sku in criticalItems) {
+      for (final sku in result.bloqueados) {
         final status = sku.statusTexto.toLowerCase();
         if (status == 'vencido') {
           vencidos++;
-        } else if (status == 'crítico' || status == 'critico') {
-          criticos++;
-        } else if (status.contains('pré')) {
-          preBloqueio++;
+        } else {
+          criticos++;  // Extremamente Crítico + Bloqueado
         }
       }
 
@@ -111,7 +103,7 @@ class _CriticalItemsScreenState extends State<CriticalItemsScreen> {
   int _getPrioridade(String status) {
     final s = status.toLowerCase();
     if (s == 'vencido') return 0;
-    if (s == 'crítico' || s == 'critico') return 1;
+    if (s.contains('crítico') || s == 'critico' || s.contains('bloqueado')) return 1;
     if (s.contains('pré')) return 2;
     return 3;
   }

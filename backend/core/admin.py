@@ -12,7 +12,8 @@ from .models import (
     SKU,
     LoteValidade,
     MovimentacaoEstoque,
-    LogConsulta
+    LogConsulta,
+    HistoricoUpload,
 )
 
 
@@ -81,3 +82,12 @@ class LogConsultaAdmin(admin.ModelAdmin):
     search_fields = ['usuario__username']
     ordering = ['-created_at']
     readonly_fields = ['usuario', 'tipo_consulta', 'parametros', 'ip_address', 'created_at']
+
+
+@admin.register(HistoricoUpload)
+class HistoricoUploadAdmin(admin.ModelAdmin):
+    list_display = ['tipo_arquivo', 'unidade_negocio', 'usuario', 'status', 'linhas_processadas', 'created_at']
+    list_filter = ['tipo_arquivo', 'status', 'unidade_negocio']
+    search_fields = ['usuario__username', 'nome_arquivo']
+    ordering = ['-created_at']
+    readonly_fields = ['tipo_arquivo', 'usuario', 'unidade_negocio', 'status', 'linhas_processadas', 'nome_arquivo', 'mensagem_erro', 'created_at']

@@ -27,32 +27,46 @@ class _NotificationBellState extends State<NotificationBell> {
   final GlobalKey _bellKey = GlobalKey();
 
   void _showNotificationsPopup() {
-    final RenderBox renderBox =
-        _bellKey.currentContext!.findRenderObject() as RenderBox;
-    final position = renderBox.localToGlobal(Offset.zero);
-    final size = renderBox.size;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 600;
+    
+    if (isMobile) {
+      // No mobile, usar BottomSheet para melhor UX
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => const NotificationBottomSheet(),
+      );
+    } else {
+      // No desktop/web, usar popup posicionado
+      final RenderBox renderBox =
+          _bellKey.currentContext!.findRenderObject() as RenderBox;
+      final position = renderBox.localToGlobal(Offset.zero);
+      final size = renderBox.size;
 
-    showDialog(
-      context: context,
-      barrierColor: Colors.transparent,
-      builder: (context) => Stack(
-        children: [
-          // Área clicável para fechar
-          Positioned.fill(
-            child: GestureDetector(
-              onTap: () => Navigator.pop(context),
-              child: Container(color: Colors.transparent),
+      showDialog(
+        context: context,
+        barrierColor: Colors.transparent,
+        builder: (context) => Stack(
+          children: [
+            // Área clicável para fechar
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(color: Colors.transparent),
+              ),
             ),
-          ),
-          // Popup posicionado
-          Positioned(
-            top: position.dy + size.height + 8,
-            right: MediaQuery.of(context).size.width - position.dx - size.width,
-            child: const NotificationDropdown(),
-          ),
-        ],
-      ),
-    );
+            // Popup posicionado
+            Positioned(
+              top: position.dy + size.height + 8,
+              right: MediaQuery.of(context).size.width - position.dx - size.width,
+              child: const NotificationDropdown(),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   @override
@@ -425,6 +439,325 @@ class _NotificationItem extends StatelessWidget {
                         '${notificacao.qtdEstoque} un',
                         style: GoogleFonts.poppins(
                           fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// BottomSheet de notificações otimizado para mobile
+class NotificationBottomSheet extends StatelessWidget {
+  const NotificationBottomSheet({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final notificationService = Provider.of<NotificationService>(context);
+    final notificacoes = notificationService.notificacoes;
+    final resumo = notificationService.resumo;
+    final isLoading = notificationService.isLoading;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      minChildSize: 0.4,
+      maxChildSize: 0.9,
+      builder: (context, scrollController) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            // Handle bar
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 8),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            
+            // Header
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(0)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.notifications, color: Colors.white, size: 24),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Alertas de Validade',
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => notificationService.fetchNotificacoes(),
+                    icon: isLoading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.refresh, color: Colors.white, size: 22),
+                    tooltip: 'Atualizar',
+                  ),
+                ],
+              ),
+            ),
+
+            // Resumo por status - horizontal scroll se necessário
+            if (resumo != null)
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  border: Border(
+                    bottom: BorderSide(color: Colors.grey.shade200),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildMobileResumoItem(
+                      label: 'Crítico',
+                      count: resumo.extremamenteCritico,
+                      color: const Color(0xFFF44336),
+                    ),
+                    _buildMobileResumoItem(
+                      label: 'Bloqueado',
+                      count: resumo.bloqueado,
+                      color: const Color(0xFFFF9800),
+                    ),
+                    _buildMobileResumoItem(
+                      label: 'Pré-Bloqueio',
+                      count: resumo.preBloqueio,
+                      color: const Color(0xFFFFC107),
+                    ),
+                  ],
+                ),
+              ),
+
+            // Lista de notificações
+            Expanded(
+              child: notificacoes.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.check_circle_outline,
+                            size: 56,
+                            color: AppColors.success,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Nenhum alerta!',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          Text(
+                            'Todos os lotes estão OK',
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.separated(
+                      controller: scrollController,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: notificacoes.length,
+                      separatorBuilder: (_, __) => Divider(
+                        height: 1,
+                        color: Colors.grey.shade200,
+                      ),
+                      itemBuilder: (context, index) {
+                        final notif = notificacoes[index];
+                        return _MobileNotificationItem(notificacao: notif);
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMobileResumoItem({
+    required String label,
+    required int count,
+    required Color color,
+  }) {
+    return Column(
+      children: [
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.15),
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: Text(
+              count.toString(),
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          label,
+          style: GoogleFonts.poppins(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: Colors.grey.shade700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Item de notificação otimizado para mobile
+class _MobileNotificationItem extends StatelessWidget {
+  final NotificacaoAlerta notificacao;
+
+  const _MobileNotificationItem({required this.notificacao});
+
+  @override
+  Widget build(BuildContext context) {
+    final dateFormat = DateFormat('dd/MM/yyyy');
+
+    return InkWell(
+      onTap: () {
+        Navigator.pop(context);
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            // Indicador de cor
+            Container(
+              width: 5,
+              height: 60,
+              decoration: BoxDecoration(
+                color: notificacao.cor,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+            const SizedBox(width: 14),
+            
+            // Informações do SKU
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          notificacao.skuNome,
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: notificacao.cor.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          notificacao.statusLabel,
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: notificacao.cor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${notificacao.skuCodigo} • Lote: ${notificacao.numeroLote}',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.calendar_today_outlined,
+                        size: 14,
+                        color: Colors.grey.shade500,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        dateFormat.format(notificacao.dataValidade),
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: notificacao.cor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '${notificacao.diasRestantes}d',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: notificacao.cor,
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '${notificacao.qtdEstoque} un',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
                           fontWeight: FontWeight.w500,
                           color: Colors.grey.shade700,
                         ),

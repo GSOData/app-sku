@@ -20,6 +20,100 @@ class PaginatedResult<T> {
   });
 }
 
+/// Resultado do relatório de criticidade
+class CriticidadeResult {
+  final int totalBloqueados;
+  final int totalPreBloqueio;
+  final List<Sku> bloqueados;
+  final List<Sku> preBloqueio;
+
+  CriticidadeResult({
+    required this.totalBloqueados,
+    required this.totalPreBloqueio,
+    required this.bloqueados,
+    required this.preBloqueio,
+  });
+}
+
+/// Dados do último upload
+class UltimoUpload {
+  final DateTime? dataUpload;
+  final String? tipoArquivo;
+  final String? tipoArquivoDisplay;
+
+  UltimoUpload({
+    this.dataUpload,
+    this.tipoArquivo,
+    this.tipoArquivoDisplay,
+  });
+
+  factory UltimoUpload.fromJson(Map<String, dynamic> json) {
+    return UltimoUpload(
+      dataUpload: json['data_upload'] != null 
+          ? DateTime.parse(json['data_upload']) 
+          : null,
+      tipoArquivo: json['tipo_arquivo'],
+      tipoArquivoDisplay: json['tipo_arquivo_display'],
+    );
+  }
+}
+
+/// Item do histórico de upload completo
+class HistoricoUpload {
+  final int id;
+  final String tipoArquivo;
+  final String tipoArquivoDisplay;
+  final int? usuarioId;
+  final String usuarioNome;
+  final int unidadeNegocioId;
+  final String unidadeCodigo;
+  final String unidadeNome;
+  final String status;
+  final String statusDisplay;
+  final int linhasProcessadas;
+  final String nomeArquivo;
+  final String? mensagemErro;
+  final DateTime createdAt;
+
+  HistoricoUpload({
+    required this.id,
+    required this.tipoArquivo,
+    required this.tipoArquivoDisplay,
+    this.usuarioId,
+    required this.usuarioNome,
+    required this.unidadeNegocioId,
+    required this.unidadeCodigo,
+    required this.unidadeNome,
+    required this.status,
+    required this.statusDisplay,
+    required this.linhasProcessadas,
+    required this.nomeArquivo,
+    this.mensagemErro,
+    required this.createdAt,
+  });
+
+  factory HistoricoUpload.fromJson(Map<String, dynamic> json) {
+    return HistoricoUpload(
+      id: json['id'],
+      tipoArquivo: json['tipo_arquivo'] ?? '',
+      tipoArquivoDisplay: json['tipo_arquivo_display'] ?? '',
+      usuarioId: json['usuario'],
+      usuarioNome: json['usuario_nome'] ?? 'Sistema',
+      unidadeNegocioId: json['unidade_negocio'] ?? 0,
+      unidadeCodigo: json['unidade_codigo'] ?? '',
+      unidadeNome: json['unidade_nome'] ?? '',
+      status: json['status'] ?? '',
+      statusDisplay: json['status_display'] ?? '',
+      linhasProcessadas: json['linhas_processadas'] ?? 0,
+      nomeArquivo: json['nome_arquivo'] ?? '',
+      mensagemErro: json['mensagem_erro'],
+      createdAt: DateTime.parse(json['created_at']),
+    );
+  }
+
+  bool get isSuccess => status == 'SUCESSO';
+}
+
 /// Exceção para erros de autenticação
 class AuthException implements Exception {
   final String message;
@@ -220,6 +314,130 @@ class SkuService {
       }
     } catch (e) {
       debugPrint('Erro em consultaValidade: $e');
+      rethrow;
+    }
+  }
+
+  /// Busca relatório de criticidade (itens bloqueados e pré-bloqueio)
+  Future<CriticidadeResult> getRelatorioCriticidade({int? unidadeId}) async {
+    try {
+      final effectiveUnidadeId = unidadeId ?? authService.unidadeAtiva?.id;
+      
+      final queryParams = <String, String>{};
+      if (effectiveUnidadeId != null) {
+        queryParams['unidade_id'] = effectiveUnidadeId.toString();
+      }
+
+      final uri = Uri.parse('${Constants.apiUrl}relatorio-criticidade/')
+          .replace(queryParameters: queryParams);
+
+      debugPrint('SkuService.getRelatorioCriticidade: $uri');
+
+      final response = await http.get(uri, headers: _headers);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        
+        final bloqueados = (data['bloqueados'] as List?)
+            ?.map((json) => Sku.fromJson(json))
+            .toList() ?? [];
+        
+        final preBloqueio = (data['pre_bloqueio'] as List?)
+            ?.map((json) => Sku.fromJson(json))
+            .toList() ?? [];
+        
+        return CriticidadeResult(
+          totalBloqueados: data['resumo']?['total_bloqueados'] ?? bloqueados.length,
+          totalPreBloqueio: data['resumo']?['total_pre_bloqueio'] ?? preBloqueio.length,
+          bloqueados: bloqueados,
+          preBloqueio: preBloqueio,
+        );
+      } else if (response.statusCode == 401) {
+        throw AuthException('Sessão expirada. Faça login novamente.');
+      } else {
+        throw Exception('Erro ao buscar relatório de criticidade');
+      }
+    } catch (e) {
+      debugPrint('Erro em getRelatorioCriticidade: $e');
+      rethrow;
+    }
+  }
+
+  /// Busca data do último upload de estoque
+  Future<UltimoUpload> getUltimoUpload({int? unidadeId}) async {
+    try {
+      final effectiveUnidadeId = unidadeId ?? authService.unidadeAtiva?.id;
+      
+      final queryParams = <String, String>{};
+      if (effectiveUnidadeId != null) {
+        queryParams['unidade_id'] = effectiveUnidadeId.toString();
+      }
+
+      final uri = Uri.parse('${Constants.apiUrl}historico-upload/ultimo/')
+          .replace(queryParameters: queryParams);
+
+      debugPrint('SkuService.getUltimoUpload: $uri');
+
+      final response = await http.get(uri, headers: _headers);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return UltimoUpload.fromJson(data);
+      } else if (response.statusCode == 401) {
+        throw AuthException('Sessão expirada. Faça login novamente.');
+      } else {
+        return UltimoUpload();
+      }
+    } catch (e) {
+      debugPrint('Erro em getUltimoUpload: $e');
+      return UltimoUpload();
+    }
+  }
+
+  /// Busca lista de histórico de uploads
+  /// 
+  /// [unidadeId] - Filtrar por unidade de negócio (usa unidade ativa por padrão)
+  /// [page] - Página da paginação
+  Future<PaginatedResult<HistoricoUpload>> getHistoricoUpload({
+    int? unidadeId,
+    int page = 1,
+  }) async {
+    try {
+      final effectiveUnidadeId = unidadeId ?? authService.unidadeAtiva?.id;
+      
+      final queryParams = <String, String>{
+        'page': page.toString(),
+      };
+      if (effectiveUnidadeId != null) {
+        queryParams['unidade_id'] = effectiveUnidadeId.toString();
+      }
+
+      final uri = Uri.parse('${Constants.apiUrl}historico-upload/')
+          .replace(queryParameters: queryParams);
+
+      debugPrint('SkuService.getHistoricoUpload: $uri');
+
+      final response = await http.get(uri, headers: _headers);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final results = (data['results'] as List? ?? [])
+            .map((json) => HistoricoUpload.fromJson(json))
+            .toList();
+        
+        return PaginatedResult<HistoricoUpload>(
+          count: data['count'] ?? results.length,
+          next: data['next'],
+          previous: data['previous'],
+          results: results,
+        );
+      } else if (response.statusCode == 401) {
+        throw AuthException('Sessão expirada. Faça login novamente.');
+      } else {
+        throw Exception('Erro ao buscar histórico de uploads');
+      }
+    } catch (e) {
+      debugPrint('Erro em getHistoricoUpload: $e');
       rethrow;
     }
   }

@@ -32,6 +32,7 @@ from .views import (
     ConfiguracaoAlertaViewSet,
     MovimentacaoEstoqueViewSet,
     LogConsultaViewSet,
+    HistoricoUploadViewSet,
     # APIViews
     RelatorioCriticidadeView,
     UploadEstoqueView,
@@ -51,6 +52,7 @@ router.register(r'estoque', EstoqueViewSet, basename='estoque')
 router.register(r'configuracoes', ConfiguracaoAlertaViewSet, basename='configuracoes')
 router.register(r'movimentacoes', MovimentacaoEstoqueViewSet, basename='movimentacoes')
 router.register(r'logs', LogConsultaViewSet, basename='logs')
+router.register(r'historico-upload', HistoricoUploadViewSet, basename='historico-upload')
 
 # URLs de autenticação
 auth_urls = [

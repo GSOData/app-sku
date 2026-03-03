@@ -14,7 +14,8 @@ from .models import (
     SKU,
     LoteValidade,
     MovimentacaoEstoque,
-    LogConsulta
+    LogConsulta,
+    HistoricoUpload,
 )
 
 Usuario = get_user_model()
@@ -651,3 +652,55 @@ class NotificacaoAlertaSerializer(serializers.Serializer):
     unidade_id = serializers.IntegerField()
     unidade_codigo = serializers.CharField()
     unidade_nome = serializers.CharField()
+
+
+# =============================================================================
+# HISTÓRICO DE UPLOAD
+# =============================================================================
+class HistoricoUploadSerializer(serializers.ModelSerializer):
+    """
+    Serializer para HistoricoUpload (somente leitura).
+    Usado para listar uploads de Grade e Contagem.
+    """
+    usuario_nome = serializers.SerializerMethodField()
+    unidade_codigo = serializers.CharField(source='unidade_negocio.codigo_unb', read_only=True)
+    unidade_nome = serializers.CharField(source='unidade_negocio.nome', read_only=True)
+    tipo_arquivo_display = serializers.CharField(source='get_tipo_arquivo_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    
+    class Meta:
+        model = HistoricoUpload
+        fields = [
+            'id',
+            'tipo_arquivo',
+            'tipo_arquivo_display',
+            'usuario',
+            'usuario_nome',
+            'unidade_negocio',
+            'unidade_codigo',
+            'unidade_nome',
+            'status',
+            'status_display',
+            'linhas_processadas',
+            'nome_arquivo',
+            'mensagem_erro',
+            'created_at',
+        ]
+        read_only_fields = '__all__'
+    
+    def get_usuario_nome(self, obj):
+        if obj.usuario:
+            return obj.usuario.get_full_name() or obj.usuario.username
+        return 'Sistema'
+
+
+class HistoricoUploadUltimoSerializer(serializers.ModelSerializer):
+    """
+    Serializer simplificado para o endpoint /ultimo/.
+    Retorna apenas data_upload (created_at) e tipo_arquivo.
+    """
+    data_upload = serializers.DateTimeField(source='created_at')
+    
+    class Meta:
+        model = HistoricoUpload
+        fields = ['data_upload', 'tipo_arquivo']

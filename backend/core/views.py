@@ -37,7 +37,8 @@ from .models import (
     SKU,
     LoteValidade,
     MovimentacaoEstoque,
-    LogConsulta
+    LogConsulta,
+    HistoricoUpload,
 )
 from .serializers import (
     UnidadeNegocioSerializer,
@@ -56,8 +57,17 @@ from .serializers import (
     MovimentacaoEstoqueSerializer,
     LogConsultaSerializer,
     NotificacaoAlertaSerializer,
+    HistoricoUploadSerializer,
+    HistoricoUploadUltimoSerializer,
     STATUS_CORES,
     STATUS_LABELS,
+)
+
+from .pagination import (
+    SKUPagination,
+    CriticidadePagination,
+    HistoricoUploadPagination,
+    LotePagination,
 )
 
 
@@ -105,6 +115,21 @@ class UnidadeAccessMixin:
         
         return None
     
+    def is_vendedor_na_unidade_ativa(self):
+        """
+        Verifica se o usuário é VENDEDOR na unidade ativa.
+        Superusuários nunca são considerados vendedores.
+        """
+        user = self.request.user
+        if user.is_superuser:
+            return False
+        
+        unidade_id = self.get_unidade_ativa()
+        if unidade_id is None:
+            return False
+        
+        return user.is_vendedor(unidade_id)
+    
     def filter_by_unidade(self, queryset, unidade_field='unidade_negocio'):
         """Filtra queryset pelas unidades do usuário."""
         unidades_ids = self.get_user_unidades()
@@ -122,6 +147,29 @@ class UnidadeAccessMixin:
         
         filter_kwargs = {f'{unidade_field}_id': unidade_id}
         return queryset.filter(**filter_kwargs)
+    
+    def exclude_vencidos_para_vendedor(self, queryset, data_validade_field='data_validade'):
+        """
+        Exclui itens vencidos do queryset se o usuário for VENDEDOR.
+        Gerentes e Diretoria continuam vendo os itens vencidos.
+        
+        Args:
+            queryset: queryset a ser filtrado
+            data_validade_field: nome do campo de data de validade
+        
+        Returns:
+            queryset filtrado (sem vencidos para vendedores)
+        """
+        if self.is_vendedor_na_unidade_ativa():
+            from django.utils import timezone
+            hoje = timezone.now().date()
+            # Exclui itens onde data_validade <= hoje (vencidos)
+            filter_kwargs = {f'{data_validade_field}__gt': hoje}
+            # Também mantém itens sem data de validade (lote BASE)
+            return queryset.filter(
+                Q(**filter_kwargs) | Q(**{f'{data_validade_field}__isnull': True})
+            )
+        return queryset
 
 
 def get_client_ip(request):
@@ -275,13 +323,16 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
     - Filtro por unidade_negocio
     - Filtro por categoria
     - Campos calculados de status
+    - Paginação de 20 itens por página
+    - Oculta vencidos para VENDEDOR
     
     Permissões RBAC:
-    - VENDEDOR: somente leitura
+    - VENDEDOR: somente leitura (não vê itens vencidos)
     - GERENTE: CRUD completo
     - DIRETORIA: leitura consolidada
     """
     permission_classes = [IsAuthenticated, CanReadSKU]
+    pagination_class = SKUPagination
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['unidade_negocio', 'categoria', 'ativo']
     ordering_fields = ['nome_produto', 'codigo_sku', 'created_at']
@@ -293,17 +344,28 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
         return SKUSerializer
     
     def get_queryset(self):
+        # Monta queryset dos lotes com filtro de vencidos para vendedor
+        lotes_queryset = LoteValidade.objects.filter(
+            ativo=True, 
+            qtd_estoque__gt=0
+        ).exclude(
+            numero_lote='BASE'  # Exclui Lote BASE
+        ).order_by('data_validade')
+        
+        # Se for vendedor, exclui lotes vencidos do prefetch
+        if self.is_vendedor_na_unidade_ativa():
+            from django.utils import timezone
+            hoje = timezone.now().date()
+            lotes_queryset = lotes_queryset.filter(
+                Q(data_validade__gt=hoje) | Q(data_validade__isnull=True)
+            )
+        
         queryset = SKU.objects.filter(ativo=True).select_related(
             'unidade_negocio'
         ).prefetch_related(
             Prefetch(
                 'lotes',
-                queryset=LoteValidade.objects.filter(
-                    ativo=True, 
-                    qtd_estoque__gt=0
-                ).exclude(
-                    numero_lote='BASE'  # Exclui Lote BASE
-                ).order_by('data_validade')
+                queryset=lotes_queryset
             )
         )
         
@@ -415,11 +477,13 @@ class RelatorioCriticidadeView(UnidadeAccessMixin, APIView):
     
     Retorna JSON separado:
     {
-        'bloqueados': [...],   # Vencidos + Críticos
+        'bloqueados': [...],   # Extremamente Crítico + Bloqueado (+ Vencidos para não-vendedores)
         'pre_bloqueio': [...]  # Pré-bloqueio
     }
     
-    Isso evita processamento no app mobile.
+    RBAC:
+    - VENDEDOR: NÃO vê itens vencidos (data_validade < hoje)
+    - GERENTE/DIRETORIA: Vê todos os itens incluindo vencidos
     """
     permission_classes = [IsAuthenticated]
     
@@ -464,19 +528,36 @@ class RelatorioCriticidadeView(UnidadeAccessMixin, APIView):
                 ativo=True
             ).first()
         
-        dias_critico = config.dias_para_critico if config else 30
-        dias_pre_bloqueio = config.dias_para_pre_bloqueio if config else 45
+        # Novos campos de configuração
+        dias_pre_bloqueio = config.dias_pre_bloqueio if config else 60
+        dias_bloqueado = config.dias_bloqueado if config else 30
+        dias_extremamente_critico = config.dias_extremamente_critico if config else 7
         
-        # Monta queryset base
+        # Verifica se o usuário é vendedor na unidade
+        is_vendedor = False
+        if unidade and not request.user.is_superuser:
+            is_vendedor = request.user.is_vendedor(unidade.id)
+        
+        # Monta queryset dos lotes - exclui vencidos para vendedores
+        hoje = date.today()
+        lotes_queryset = LoteValidade.objects.filter(
+            ativo=True, 
+            qtd_estoque__gt=0
+        ).order_by('data_validade')
+        
+        if is_vendedor:
+            # Vendedor não vê lotes vencidos
+            lotes_queryset = lotes_queryset.filter(
+                Q(data_validade__gt=hoje) | Q(data_validade__isnull=True)
+            )
+        
+        # Monta queryset base de SKUs
         queryset = SKU.objects.filter(ativo=True).select_related(
             'unidade_negocio'
         ).prefetch_related(
             Prefetch(
                 'lotes',
-                queryset=LoteValidade.objects.filter(
-                    ativo=True, 
-                    qtd_estoque__gt=0
-                ).order_by('data_validade')
+                queryset=lotes_queryset
             )
         )
         
@@ -487,16 +568,19 @@ class RelatorioCriticidadeView(UnidadeAccessMixin, APIView):
             unidades_ids = request.user.get_unidades_ids()
             queryset = queryset.filter(unidade_negocio_id__in=unidades_ids)
         
-        # Classifica SKUs por status
-        bloqueados = []
+        # Classifica SKUs por status (NOVAS CATEGORIAS)
+        bloqueados = []  # Vencidos + Extremamente Crítico + Bloqueado
         pre_bloqueio = []
-        hoje = date.today()
         
         for sku in queryset:
             status_info = sku.get_status(config)
             status_code = status_info.get('status')
             
-            if status_code in ['VENCIDO', 'CRITICO']:
+            # Vendedor não deve ver VENCIDO no resultado
+            if is_vendedor and status_code == 'VENCIDO':
+                continue
+            
+            if status_code in ['VENCIDO', 'EXTREMAMENTE_CRITICO', 'BLOQUEADO']:
                 bloqueados.append(sku)
             elif status_code == 'PRE_BLOQUEIO':
                 pre_bloqueio.append(sku)
@@ -528,8 +612,9 @@ class RelatorioCriticidadeView(UnidadeAccessMixin, APIView):
         return Response({
             'unidade': UnidadeNegocioResumoSerializer(unidade).data if unidade else None,
             'config': {
-                'dias_para_critico': dias_critico,
-                'dias_para_pre_bloqueio': dias_pre_bloqueio,
+                'dias_pre_bloqueio': dias_pre_bloqueio,
+                'dias_bloqueado': dias_bloqueado,
+                'dias_extremamente_critico': dias_extremamente_critico,
             },
             'resumo': {
                 'total_bloqueados': len(bloqueados),
@@ -659,12 +744,13 @@ class LoteValidadeViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
     Exclui automaticamente o Lote BASE (data_validade=None).
     
     Permissões RBAC:
-    - VENDEDOR: somente leitura
+    - VENDEDOR: somente leitura (não vê itens vencidos)
     - GERENTE: CRUD completo
     - DIRETORIA: leitura consolidada
     """
     serializer_class = LoteValidadeSerializer
     permission_classes = [IsAuthenticated, CanReadSKU]
+    pagination_class = LotePagination
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['sku', 'ativo']
     ordering_fields = ['data_validade', 'numero_lote', 'created_at']
@@ -683,14 +769,17 @@ class LoteValidadeViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
         # Filtra pela unidade ativa (obrigatório via SKU)
         queryset = self.filter_by_unidade_ativa(queryset, unidade_field='sku__unidade_negocio')
         
+        # VENDEDOR não vê itens vencidos
+        queryset = self.exclude_vencidos_para_vendedor(queryset, data_validade_field='data_validade')
+        
         # Filtro por SKU específico
         sku_id = self.request.query_params.get('sku_id', None)
         if sku_id:
             queryset = queryset.filter(sku_id=sku_id)
         
-        # Filtro para mostrar apenas vencidos
+        # Filtro para mostrar apenas vencidos (só funciona para não-vendedores)
         vencidos = self.request.query_params.get('vencidos', None)
-        if vencidos == 'true':
+        if vencidos == 'true' and not self.is_vendedor_na_unidade_ativa():
             queryset = queryset.filter(data_validade__lt=date.today())
         
         # Filtro para mostrar apenas com estoque
@@ -950,6 +1039,8 @@ class UploadEstoqueView(APIView):
     
     Permissões RBAC:
     - Apenas GERENTE pode fazer upload na sua unidade
+    
+    Registra histórico de upload em HistoricoUpload.
     """
     permission_classes = [IsAuthenticated, CanManageUpload]
     
@@ -990,8 +1081,24 @@ class UploadEstoqueView(APIView):
                 )
         
         try:
+            unidade = UnidadeNegocio.objects.get(id=int(unidade_negocio_id))
             service = EstoqueImportService(int(unidade_negocio_id))
             result = service.processar_grade_020502(file)
+            
+            # Registra histórico de upload
+            linhas_processadas = result.get('linhas_processadas', 0)
+            if isinstance(linhas_processadas, dict):
+                linhas_processadas = linhas_processadas.get('total', 0)
+            
+            HistoricoUpload.objects.create(
+                tipo_arquivo='GRADE',
+                usuario=user,
+                unidade_negocio=unidade,
+                status='SUCESSO' if result.get('success') else 'ERRO',
+                linhas_processadas=linhas_processadas,
+                nome_arquivo=file.name,
+                mensagem_erro=result.get('error') if not result.get('success') else None
+            )
             
             if result.get('success'):
                 return Response(result, status=status.HTTP_200_OK)
@@ -1004,6 +1111,21 @@ class UploadEstoqueView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
         except Exception as e:
+            # Tenta registrar erro no histórico
+            try:
+                unidade = UnidadeNegocio.objects.get(id=int(unidade_negocio_id))
+                HistoricoUpload.objects.create(
+                    tipo_arquivo='GRADE',
+                    usuario=user,
+                    unidade_negocio=unidade,
+                    status='ERRO',
+                    linhas_processadas=0,
+                    nome_arquivo=file.name if file else None,
+                    mensagem_erro=str(e)
+                )
+            except:
+                pass
+            
             return Response(
                 {'error': f'Erro ao processar arquivo: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -1022,6 +1144,8 @@ class UploadContagensView(APIView):
     
     Permissões RBAC:
     - Apenas GERENTE pode fazer upload na sua unidade
+    
+    Registra histórico de upload em HistoricoUpload.
     """
     permission_classes = [IsAuthenticated, CanManageUpload]
     
@@ -1062,8 +1186,24 @@ class UploadContagensView(APIView):
                 )
         
         try:
+            unidade = UnidadeNegocio.objects.get(id=int(unidade_negocio_id))
             service = EstoqueImportService(int(unidade_negocio_id))
             result = service.processar_contagens(file)
+            
+            # Registra histórico de upload
+            linhas_processadas = result.get('linhas_processadas', 0)
+            if isinstance(linhas_processadas, dict):
+                linhas_processadas = linhas_processadas.get('total', 0)
+            
+            HistoricoUpload.objects.create(
+                tipo_arquivo='CONTAGEM',
+                usuario=user,
+                unidade_negocio=unidade,
+                status='SUCESSO' if result.get('success') else 'ERRO',
+                linhas_processadas=linhas_processadas,
+                nome_arquivo=file.name,
+                mensagem_erro=result.get('error') if not result.get('success') else None
+            )
             
             if result.get('success'):
                 return Response(result, status=status.HTTP_200_OK)
@@ -1076,10 +1216,99 @@ class UploadContagensView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
         except Exception as e:
+            # Tenta registrar erro no histórico
+            try:
+                unidade = UnidadeNegocio.objects.get(id=int(unidade_negocio_id))
+                HistoricoUpload.objects.create(
+                    tipo_arquivo='CONTAGEM',
+                    usuario=user,
+                    unidade_negocio=unidade,
+                    status='ERRO',
+                    linhas_processadas=0,
+                    nome_arquivo=file.name if file else None,
+                    mensagem_erro=str(e)
+                )
+            except:
+                pass
+            
             return Response(
                 {'error': f'Erro ao processar arquivo: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+# =============================================================================
+# HISTÓRICO DE UPLOAD
+# =============================================================================
+class HistoricoUploadViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet somente leitura para HistoricoUpload.
+    
+    GET /api/historico-upload/
+    GET /api/historico-upload/{id}/
+    GET /api/historico-upload/ultimo/?unidade_id=X
+    
+    Retorna histórico de uploads ordenado do mais recente para o mais antigo.
+    """
+    serializer_class = HistoricoUploadSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = HistoricoUploadPagination
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['tipo_arquivo', 'status', 'unidade_negocio']
+    ordering_fields = ['created_at']
+    ordering = ['-created_at']
+    
+    def get_queryset(self):
+        queryset = HistoricoUpload.objects.filter(
+            ativo=True
+        ).select_related(
+            'usuario',
+            'unidade_negocio'
+        )
+        
+        # Filtra pela unidade ativa (se fornecido)
+        unidade_id = self.get_unidade_ativa()
+        if unidade_id:
+            queryset = queryset.filter(unidade_negocio_id=unidade_id)
+        else:
+            # Se não tiver unidade ativa, filtra pelas unidades do usuário
+            unidades_ids = self.get_user_unidades()
+            queryset = queryset.filter(unidade_negocio_id__in=unidades_ids)
+        
+        return queryset
+    
+    @action(detail=False, methods=['get'])
+    def ultimo(self, request):
+        """
+        GET /api/historico-upload/ultimo/?unidade_id=X
+        
+        Retorna apenas a data_upload mais recente da unidade.
+        """
+        unidade_id = self.get_unidade_ativa()
+        if unidade_id is None:
+            return Response(
+                {'error': 'Parâmetro unidade_id é obrigatório'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        ultimo_upload = HistoricoUpload.objects.filter(
+            ativo=True,
+            unidade_negocio_id=unidade_id,
+            status='SUCESSO'
+        ).order_by('-created_at').first()
+        
+        if ultimo_upload:
+            return Response({
+                'data_upload': ultimo_upload.created_at,
+                'tipo_arquivo': ultimo_upload.tipo_arquivo,
+                'tipo_arquivo_display': ultimo_upload.get_tipo_arquivo_display(),
+            })
+        else:
+            return Response({
+                'data_upload': None,
+                'tipo_arquivo': None,
+                'tipo_arquivo_display': None,
+            })
 
 
 # =============================================================================
