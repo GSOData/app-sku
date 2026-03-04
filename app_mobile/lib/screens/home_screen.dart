@@ -261,7 +261,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } else if (_ultimoUpload?.dataUpload != null) {
       final dateFormat = DateFormat('dd/MM/yyyy');
       final timeFormat = DateFormat('HH:mm');
-      final data = _ultimoUpload!.dataUpload!;
+      final data = _ultimoUpload!.dataUpload!.toLocal(); // Converte UTC para horário local
       texto = 'Última atualização de estoque: ${dateFormat.format(data)} às ${timeFormat.format(data)}';
     } else {
       texto = 'Nenhuma atualização recente';

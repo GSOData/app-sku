@@ -910,11 +910,12 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
   }
 
   String _formatTimestamp(DateTime dt) {
-    return '${dt.day.toString().padLeft(2, '0')}/'
-           '${dt.month.toString().padLeft(2, '0')}/'
-           '${dt.year} '
-           '${dt.hour.toString().padLeft(2, '0')}:'
-           '${dt.minute.toString().padLeft(2, '0')}';
+    final local = dt.toLocal(); // Converte UTC para horário local
+    return '${local.day.toString().padLeft(2, '0')}/'
+           '${local.month.toString().padLeft(2, '0')}/'
+           '${local.year} '
+           '${local.hour.toString().padLeft(2, '0')}:'
+           '${local.minute.toString().padLeft(2, '0')}';
   }
 
   void _showSuccess(String message) {
