@@ -235,8 +235,399 @@ class _WebSettingsScreenState extends State<WebSettingsScreen> {
   }
 
   Widget _buildMobileContent() {
-    return const Center(
-      child: Text('Configurações disponíveis apenas na versão Web'),
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_errorMessage != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.error_outline, size: 48, color: AppColors.error),
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                _errorMessage!,
+                style: GoogleFonts.poppins(color: AppColors.error),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              ElevatedButton(
+                onPressed: _loadConfiguracoes,
+                child: const Text('Tentar novamente'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          AppSpacing.md,
+          AppSpacing.md,
+          AppSpacing.xl, // Padding extra no bottom para SafeArea
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Título da seção
+            Text(
+              'Configurações de Alertas',
+              style: GoogleFonts.poppins(
+                fontSize: AppFontSizes.title,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Text(
+              'Configure os parâmetros de alerta para itens próximos da validade',
+              style: GoogleFonts.poppins(
+                fontSize: AppFontSizes.body,
+                color: AppColors.textSecondary,
+              ),
+            ),
+
+            const SizedBox(height: AppSpacing.lg),
+
+            // Card de configurações de dias (Mobile)
+            _buildMobileConfigCard(),
+
+            const SizedBox(height: AppSpacing.lg),
+
+            // Card informativo
+            _buildMobileInfoCard(),
+
+            const SizedBox(height: AppSpacing.lg),
+
+            // Botão salvar (largura total no mobile)
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _isSaving ? null : _salvarConfiguracoes,
+                icon: _isSaving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.save),
+                label: const Text('Salvar Configurações'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: AppColors.onPrimary,
+                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+                ),
+              ),
+            ),
+            
+            // Zona de Perigo - apenas para ADMIN
+            _buildMobileDangerZone(),
+            
+            const SizedBox(height: AppSpacing.xl),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Card de configurações para mobile (campos ocupam 100% da largura)
+  Widget _buildMobileConfigCard() {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        side: BorderSide(color: AppColors.divider.withAlpha(128)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(AppSpacing.sm),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withAlpha(26),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                  ),
+                  child: Icon(Icons.timer_outlined, color: AppColors.primary),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Text(
+                  'Parâmetros de Criticidade',
+                  style: GoogleFonts.poppins(
+                    fontSize: AppFontSizes.subtitle,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            
+            // Campo Pré-Bloqueio
+            _buildMobileNumberField(
+              label: 'Dias para Pré-Bloqueio',
+              hint: 'Alerta amarelo (padrão: 60 dias)',
+              controller: _diasPreBloqueioController,
+              color: const Color(0xFFFFC107),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            
+            // Campo Bloqueado
+            _buildMobileNumberField(
+              label: 'Dias para Bloqueado',
+              hint: 'Alerta laranja (padrão: 30 dias)',
+              controller: _diasBloqueadoController,
+              color: const Color(0xFFFF9800),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            
+            // Campo Extremamente Crítico
+            _buildMobileNumberField(
+              label: 'Dias para Extremamente Crítico',
+              hint: 'Alerta vermelho (padrão: 7 dias)',
+              controller: _diasExtremamenteCriticoController,
+              color: const Color(0xFFF44336),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Campo numérico para mobile (100% largura)
+  Widget _buildMobileNumberField({
+    required String label,
+    required String hint,
+    required TextEditingController controller,
+    required Color color,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Text(
+                label,
+                style: GoogleFonts.poppins(fontWeight: FontWeight.w500),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          hint,
+          style: GoogleFonts.poppins(
+            fontSize: AppFontSizes.caption,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: AppColors.background,
+            suffixText: 'dias',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              borderSide: BorderSide.none,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              borderSide: BorderSide(color: color),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              borderSide: BorderSide(color: color, width: 2),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Card informativo para mobile
+  Widget _buildMobileInfoCard() {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.info.withAlpha(26),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.info.withAlpha(51)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.info_outline, color: AppColors.info, size: 20),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  'Como funcionam os status de validade?',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.info,
+                    fontSize: AppFontSizes.body,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          _buildStatusLegend(
+            color: Colors.black,
+            label: 'Vencido',
+            description: 'Data de validade já passou',
+          ),
+          _buildStatusLegend(
+            color: const Color(0xFFF44336),
+            label: 'Extremamente Crítico',
+            description: 'Até ${_diasExtremamenteCriticoController.text} dias',
+          ),
+          _buildStatusLegend(
+            color: const Color(0xFFFF9800),
+            label: 'Bloqueado',
+            description: 'Entre ${_diasExtremamenteCriticoController.text} e ${_diasBloqueadoController.text} dias',
+          ),
+          _buildStatusLegend(
+            color: const Color(0xFFFFC107),
+            label: 'Pré-Bloqueio',
+            description: 'Entre ${_diasBloqueadoController.text} e ${_diasPreBloqueioController.text} dias',
+          ),
+          _buildStatusLegend(
+            color: const Color(0xFF4CAF50),
+            label: 'OK',
+            description: 'Mais de ${_diasPreBloqueioController.text} dias',
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Zona de Perigo para mobile
+  Widget _buildMobileDangerZone() {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    
+    // Só mostra para usuários ADMIN
+    if (!authService.usuario!.isAdmin) {
+      return const SizedBox.shrink();
+    }
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: AppSpacing.xl),
+        
+        // Divider vermelho
+        Container(
+          height: 2,
+          color: AppColors.error.withAlpha(51),
+        ),
+        
+        const SizedBox(height: AppSpacing.lg),
+        
+        // Título da seção
+        Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 24),
+            const SizedBox(width: AppSpacing.sm),
+            Text(
+              'Zona de Perigo',
+              style: GoogleFonts.poppins(
+                fontSize: AppFontSizes.title,
+                fontWeight: FontWeight.bold,
+                color: AppColors.error,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          'Operações irreversíveis. Tenha certeza do que está fazendo.',
+          style: GoogleFonts.poppins(
+            fontSize: AppFontSizes.body,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        
+        const SizedBox(height: AppSpacing.md),
+        
+        // Card de Limpar Banco (mobile - layout vertical)
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            color: AppColors.error.withAlpha(13),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: AppColors.error.withAlpha(77)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Limpar Banco de Dados',
+                style: GoogleFonts.poppins(
+                  fontSize: AppFontSizes.subtitle,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.error,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                'Remove TODOS os SKUs e Lotes do sistema. Esta ação é IRREVERSÍVEL.',
+                style: GoogleFonts.poppins(
+                  fontSize: AppFontSizes.body,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _isDeletingDatabase ? null : _confirmarLimpezaBanco,
+                  icon: _isDeletingDatabase
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.delete_forever),
+                  label: const Text('Limpar Banco'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.error,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

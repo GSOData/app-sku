@@ -95,6 +95,7 @@ class _ResponsiveLayoutState extends State<ResponsiveLayout> {
   }
 
   /// Layout Mobile - AppBar tradicional + conteúdo
+  /// No mobile, não exibimos actions customizadas (usamos FAB quando necessário)
   Widget _buildMobileLayout(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -107,14 +108,15 @@ class _ResponsiveLayoutState extends State<ResponsiveLayout> {
               backgroundColor: AppColors.primary,
               foregroundColor: AppColors.onPrimary,
               elevation: 0,
-              actions: widget.actions ??
-                  [
-                    IconButton(
-                      icon: const Icon(Icons.logout),
-                      onPressed: () => _handleLogout(context),
-                      tooltip: 'Sair',
-                    ),
-                  ],
+              // Mobile: apenas botão de logout, sem actions customizadas
+              // Actions como "Novo Usuário" são exibidas via FAB no mobile
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.logout),
+                  onPressed: () => _handleLogout(context),
+                  tooltip: 'Sair',
+                ),
+              ],
             )
           : null,
       body: widget.mobileBody,

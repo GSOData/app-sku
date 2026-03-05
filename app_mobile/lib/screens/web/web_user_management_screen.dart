@@ -60,7 +60,7 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
     return ResponsiveLayout(
       title: 'Gerenciamento de Usuários',
       currentSection: WebMenuSection.users,
-      mobileBody: _buildMobileContent(),
+      mobileBody: _buildMobileBody(canAddUser),
       webBody: _buildWebContent(),
       actions: [
         if (canAddUser)
@@ -78,9 +78,359 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
     );
   }
 
+  /// Body mobile com FAB usando Stack
+  Widget _buildMobileBody(bool canAddUser) {
+    // Calcula o padding do SafeArea para posicionar o FAB corretamente
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    
+    return Stack(
+      children: [
+        _buildMobileContent(),
+        if (canAddUser)
+          Positioned(
+            right: AppSpacing.md,
+            // Posiciona o FAB acima da barra de navegação nativa
+            bottom: AppSpacing.md + bottomPadding,
+            child: FloatingActionButton.extended(
+              onPressed: () => _showAddUserDialog(context),
+              icon: const Icon(Icons.add),
+              label: const Text('Novo'),
+              backgroundColor: AppColors.primary,
+              foregroundColor: AppColors.onPrimary,
+            ),
+          ),
+      ],
+    );
+  }
+
   Widget _buildMobileContent() {
-    return const Center(
-      child: Text('Gerenciamento de Usuários disponível apenas na versão Web'),
+    return Column(
+      children: [
+        // Barra de busca mobile
+        _buildMobileSearchBar(),
+        
+        // Conteúdo principal
+        Expanded(child: _buildMobileList()),
+      ],
+    );
+  }
+
+  /// Barra de busca adaptada para mobile
+  Widget _buildMobileSearchBar() {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      color: AppColors.surface,
+      child: Column(
+        children: [
+          // Campo de busca
+          TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Buscar por nome ou email...',
+              prefixIcon: const Icon(Icons.search, size: 20),
+              suffixIcon: _searchController.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, size: 20),
+                      onPressed: () {
+                        _searchController.clear();
+                        _loadUsuarios();
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: AppColors.background,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.sm,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                borderSide: BorderSide.none,
+              ),
+            ),
+            onSubmitted: (_) => _loadUsuarios(),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          // Filtro por papel
+          Row(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: ['Todos', 'Admin', 'Diretoria', 'Gerente', 'Vendedor']
+                        .map((papel) => Padding(
+                              padding: const EdgeInsets.only(right: AppSpacing.xs),
+                              child: ChoiceChip(
+                                label: Text(papel),
+                                selected: _selectedFilter == papel,
+                                onSelected: (selected) {
+                                  if (selected) {
+                                    setState(() => _selectedFilter = papel);
+                                    _loadUsuarios();
+                                  }
+                                },
+                                selectedColor: AppColors.primary.withAlpha(51),
+                                labelStyle: GoogleFonts.poppins(
+                                  fontSize: AppFontSizes.caption,
+                                  color: _selectedFilter == papel
+                                      ? AppColors.primary
+                                      : AppColors.textPrimary,
+                                ),
+                              ),
+                            ))
+                        .toList(),
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: _loadUsuarios,
+                icon: const Icon(Icons.refresh),
+                tooltip: 'Recarregar',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Lista de usuários para mobile
+  Widget _buildMobileList() {
+    if (_userService.isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_userService.errorMessage != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.error_outline, size: 48, color: AppColors.error),
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                _userService.errorMessage!,
+                style: GoogleFonts.poppins(color: AppColors.error),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              ElevatedButton(
+                onPressed: _loadUsuarios,
+                child: const Text('Tentar novamente'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_userService.usuarios.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.people_outline, size: 48, color: Colors.grey[400]),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              'Nenhum usuário encontrado',
+              style: GoogleFonts.poppins(color: AppColors.textSecondary),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadUsuarios,
+      child: ListView.builder(
+        // Padding com bottom maior para compensar o FAB e a barra nativa
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          AppSpacing.md,
+          AppSpacing.md,
+          100.0, // Espaço extra para o FAB não sobrepor o último item
+        ),
+        itemCount: _userService.usuarios.length,
+        itemBuilder: (context, index) {
+          final user = _userService.usuarios[index];
+          return _buildUserCard(user);
+        },
+      ),
+    );
+  }
+
+  /// Card de usuário para mobile
+  Widget _buildUserCard(ApiUsuario user) {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final canEdit = authService.usuario?.canManageUsers ?? false;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: AppSpacing.md),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        side: BorderSide(color: AppColors.divider.withAlpha(128)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Avatar
+            CircleAvatar(
+              radius: 24,
+              backgroundColor: AppColors.primary.withAlpha(26),
+              child: Text(
+                (user.displayName.isNotEmpty ? user.displayName : user.username)
+                    .substring(0, 1)
+                    .toUpperCase(),
+                style: GoogleFonts.poppins(
+                  fontSize: AppFontSizes.subtitle,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.primary,
+                ),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+
+            // Informações do usuário
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Nome
+                  Text(
+                    user.displayName.isNotEmpty ? user.displayName : user.username,
+                    style: GoogleFonts.poppins(
+                      fontSize: AppFontSizes.subtitle,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  // Email
+                  Text(
+                    user.email,
+                    style: GoogleFonts.poppins(
+                      fontSize: AppFontSizes.body,
+                      color: AppColors.textSecondary,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  // Badges de Papel e Status
+                  Row(
+                    children: [
+                      _buildMobilePapelChip(user.papelLabel),
+                      const SizedBox(width: AppSpacing.sm),
+                      _buildMobileStatusIndicator(user.isActive),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // Menu de ações
+            if (canEdit)
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert, color: AppColors.textSecondary),
+                onSelected: (value) {
+                  switch (value) {
+                    case 'edit':
+                      _showEditUserDialog(context, user);
+                      break;
+                    case 'delete':
+                      _showDeleteConfirmation(context, user);
+                      break;
+                  }
+                },
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'edit',
+                    child: Row(
+                      children: [
+                        Icon(Icons.edit_outlined, size: 20, color: AppColors.info),
+                        const SizedBox(width: AppSpacing.sm),
+                        const Text('Editar'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete_outline, size: 20, color: AppColors.error),
+                        const SizedBox(width: AppSpacing.sm),
+                        const Text('Excluir'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Chip de papel para mobile
+  Widget _buildMobilePapelChip(String papel) {
+    Color color;
+    switch (papel) {
+      case 'Administrador':
+        color = AppColors.error;
+        break;
+      case 'Diretoria':
+        color = AppColors.warning;
+        break;
+      case 'Gerente':
+        color = AppColors.primary;
+        break;
+      default:
+        color = AppColors.textSecondary;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withAlpha(26),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+      ),
+      child: Text(
+        papel,
+        style: GoogleFonts.poppins(
+          fontSize: AppFontSizes.caption,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
+      ),
+    );
+  }
+
+  /// Indicador de status para mobile
+  Widget _buildMobileStatusIndicator(bool isActive) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: isActive ? AppColors.success : AppColors.error,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          isActive ? 'Ativo' : 'Inativo',
+          style: GoogleFonts.poppins(
+            fontSize: AppFontSizes.caption,
+            color: isActive ? AppColors.success : AppColors.error,
+          ),
+        ),
+      ],
     );
   }
 

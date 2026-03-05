@@ -11,6 +11,8 @@ import 'login_screen.dart';
 import 'sku_list_screen.dart';
 import 'critical_items_screen.dart';
 import 'stock_report_screen.dart';
+import 'web/web_user_management_screen.dart';
+import 'web/web_settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -180,9 +182,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
               const SizedBox(height: AppSpacing.md),
 
-              // Botões do Menu
+              // Botões do Menu com scroll
               Expanded(
-                child: Column(
+                child: ListView(
                   children: [
                     // Consulta Validade - Visível para todos
                     _buildMenuButton(
@@ -239,12 +241,55 @@ class _HomeScreenState extends State<HomeScreen> {
                         },
                       ),
                     ],
+
+                    // Gestão de Usuários - Visível para GERENTE, DIRETORIA e ADMIN
+                    if (usuario?.canManageUsers ?? false) ...[
+                      const SizedBox(height: AppSpacing.md),
+                      _buildMenuButton(
+                        context,
+                        icon: Icons.people_outline,
+                        title: 'Gestão de Usuários',
+                        subtitle: 'Gerenciar usuários do sistema',
+                        color: AppColors.primary,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const WebUserManagementScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+
+                    // Configurações - Visível para GERENTE, DIRETORIA e ADMIN
+                    if (usuario?.canManageSettings ?? false) ...[
+                      const SizedBox(height: AppSpacing.md),
+                      _buildMenuButton(
+                        context,
+                        icon: Icons.settings_outlined,
+                        title: 'Configurações',
+                        subtitle: 'Ajustes de alertas e sistema',
+                        color: AppColors.textSecondary,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const WebSettingsScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                    
+                    // Espaçamento antes do rodapé
+                    const SizedBox(height: AppSpacing.lg),
+                    
+                    // Rodapé de última atualização (dentro do ListView)
+                    _buildUltimaAtualizacao(),
                   ],
                 ),
               ),
-              
-              // Rodapé de última atualização
-              _buildUltimaAtualizacao(),
             ],
           ),
         ),
