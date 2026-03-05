@@ -10,6 +10,7 @@ from io import BytesIO
 from datetime import datetime
 from typing import Tuple, Dict, Any
 from django.db import transaction
+from django.db.models import Sum
 from django.utils import timezone
 
 from .models import SKU, LoteValidade, UnidadeNegocio
@@ -255,6 +256,11 @@ class EstoqueImportService:
         - Quantidade Cx: Quantidade em caixas
         - Quantidade Unidade: Quantidade em unidades
         
+        REGRAS DE NEGÓCIO:
+        - A soma dos lotes com validade NÃO pode ultrapassar o total da 020502
+        - O lote BASE é recalculado como: Total 020502 - Soma(lotes com validade)
+        - Se a soma ultrapassar, a quantidade é limitada ao disponível
+        
         Args:
             file: Arquivo upload
             
@@ -276,6 +282,9 @@ class EstoqueImportService:
             # Preenche NaN com valores padrão
             df['qtd_caixas'] = pd.to_numeric(df.get('qtd_caixas', 0), errors='coerce').fillna(0).astype(int)
             df['qtd_unidades'] = pd.to_numeric(df.get('qtd_unidades', 0), errors='coerce').fillna(0).astype(int)
+            
+            # Agrupa por SKU para processar todas as validades juntas
+            skus_processados = {}
             
             for idx, row in df.iterrows():
                 try:
@@ -316,6 +325,82 @@ class EstoqueImportService:
                     qtd_unidades = int(row['qtd_unidades'])
                     qtd_total = (qtd_caixas * sku.fator_conversao) + qtd_unidades
                     
+                    # Agrupa por SKU
+                    if codigo_sku not in skus_processados:
+                        skus_processados[codigo_sku] = {
+                            'sku': sku,
+                            'lotes': []
+                        }
+                    
+                    skus_processados[codigo_sku]['lotes'].append({
+                        'data_validade': data_validade,
+                        'qtd_total': qtd_total,
+                        'linha': idx + 2
+                    })
+                    
+                except Exception as e:
+                    self.errors.append(f"Linha {idx + 2}: {str(e)}")
+            
+            # Processa cada SKU respeitando o limite da 020502
+            for codigo_sku, dados in skus_processados.items():
+                sku = dados['sku']
+                lotes_validade = dados['lotes']
+                
+                # Busca o total disponível no lote BASE (020502)
+                try:
+                    lote_base = LoteValidade.objects.get(
+                        sku=sku,
+                        numero_lote='BASE'
+                    )
+                    total_disponivel = lote_base.qtd_estoque
+                except LoteValidade.DoesNotExist:
+                    self.warnings.append(
+                        f"SKU '{codigo_sku}': Lote BASE não encontrado. Importe a planilha 020502 primeiro."
+                    )
+                    continue
+                
+                # Soma dos lotes com validade que já existem (excluindo os que vamos atualizar)
+                datas_validade_novas = [l['data_validade'] for l in lotes_validade]
+                soma_lotes_existentes = LoteValidade.objects.filter(
+                    sku=sku,
+                    ativo=True,
+                    data_validade__isnull=False
+                ).exclude(
+                    data_validade__in=datas_validade_novas
+                ).aggregate(
+                    total=Sum('qtd_estoque')
+                )['total'] or 0
+                
+                # Calcula quanto resta para os novos lotes
+                disponivel_para_novos = total_disponivel - soma_lotes_existentes
+                
+                # Ordena lotes por data de validade (mais próximo primeiro - FEFO)
+                lotes_validade.sort(key=lambda x: x['data_validade'])
+                
+                soma_novos_lotes = 0
+                
+                for lote_info in lotes_validade:
+                    data_validade = lote_info['data_validade']
+                    qtd_solicitada = lote_info['qtd_total']
+                    linha = lote_info['linha']
+                    
+                    # Verifica se ainda há quantidade disponível
+                    qtd_restante = disponivel_para_novos - soma_novos_lotes
+                    
+                    if qtd_restante <= 0:
+                        self.warnings.append(
+                            f"Linha {linha}: SKU '{codigo_sku}' - Quantidade excede o estoque total. Lote ignorado."
+                        )
+                        continue
+                    
+                    # Limita a quantidade ao disponível
+                    qtd_final = min(qtd_solicitada, qtd_restante)
+                    
+                    if qtd_final < qtd_solicitada:
+                        self.warnings.append(
+                            f"Linha {linha}: SKU '{codigo_sku}' - Quantidade ajustada de {qtd_solicitada} para {qtd_final} (limite do estoque)."
+                        )
+                    
                     # Gera número de lote baseado na validade
                     numero_lote = f"VAL_{data_validade.strftime('%Y%m%d')}"
                     
@@ -325,23 +410,33 @@ class EstoqueImportService:
                         data_validade=data_validade,
                         defaults={
                             'numero_lote': numero_lote,
-                            'qtd_estoque': qtd_total,
+                            'qtd_estoque': qtd_final,
                         }
                     )
                     
                     if not lote_created:
-                        # Soma à quantidade existente ou substitui
-                        lote.qtd_estoque = qtd_total
+                        lote.qtd_estoque = qtd_final
                         lote.numero_lote = numero_lote
                         lote.save()
                         self.updated_count += 1
                     else:
                         self.created_count += 1
                     
+                    soma_novos_lotes += qtd_final
                     self.processed_count += 1
-                    
-                except Exception as e:
-                    self.errors.append(f"Linha {idx + 2}: {str(e)}")
+                
+                # Recalcula o lote BASE (estoque cego)
+                soma_todos_lotes_validade = LoteValidade.objects.filter(
+                    sku=sku,
+                    ativo=True,
+                    data_validade__isnull=False
+                ).aggregate(
+                    total=Sum('qtd_estoque')
+                )['total'] or 0
+                
+                estoque_cego = total_disponivel - soma_todos_lotes_validade
+                lote_base.qtd_estoque = max(0, estoque_cego)
+                lote_base.save()
             
             return self._build_result('Contagens')
             
