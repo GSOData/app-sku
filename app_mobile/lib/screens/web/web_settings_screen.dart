@@ -64,6 +64,7 @@ class _WebSettingsScreenState extends State<WebSettingsScreen> {
   late TextEditingController _diasBloqueadoController;
   late TextEditingController _diasExtremamenteCriticoController;
   bool _isSaving = false;
+  bool _isDeletingDatabase = false;
 
   @override
   void initState() {
@@ -349,9 +350,260 @@ class _WebSettingsScreenState extends State<WebSettingsScreen> {
               ),
             ),
           ),
+          
+          // Zona de Perigo - apenas para ADMIN
+          _buildDangerZone(),
         ],
       ),
     );
+  }
+
+  /// Constrói a seção "Zona de Perigo" visível apenas para ADMIN
+  Widget _buildDangerZone() {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    
+    // Só mostra para usuários ADMIN
+    if (!authService.currentUser!.isAdmin) {
+      return const SizedBox.shrink();
+    }
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: AppSpacing.xl * 2),
+        
+        // Divider vermelho
+        Container(
+          height: 2,
+          color: AppColors.error.withAlpha(51),
+        ),
+        
+        const SizedBox(height: AppSpacing.xl),
+        
+        // Título da seção
+        Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 28),
+            const SizedBox(width: AppSpacing.sm),
+            Text(
+              'Zona de Perigo',
+              style: GoogleFonts.poppins(
+                fontSize: AppFontSizes.headline,
+                fontWeight: FontWeight.bold,
+                color: AppColors.error,
+              ),
+            ),
+          ],
+        ),
+        Text(
+          'Operações irreversíveis. Tenha certeza do que está fazendo.',
+          style: GoogleFonts.poppins(
+            fontSize: AppFontSizes.body,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        
+        const SizedBox(height: AppSpacing.lg),
+        
+        // Card de Limpar Banco
+        Container(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          decoration: BoxDecoration(
+            color: AppColors.error.withAlpha(13),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: AppColors.error.withAlpha(77)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Limpar Banco de Dados',
+                      style: GoogleFonts.poppins(
+                        fontSize: AppFontSizes.subtitle,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.error,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.xs),
+                    Text(
+                      'Remove TODOS os SKUs e Lotes do sistema. Esta ação é IRREVERSÍVEL.',
+                      style: GoogleFonts.poppins(
+                        fontSize: AppFontSizes.body,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppSpacing.lg),
+              ElevatedButton.icon(
+                onPressed: _isDeletingDatabase ? null : _confirmarLimpezaBanco,
+                icon: _isDeletingDatabase
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.delete_forever),
+                label: const Text('Limpar Banco'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.error,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.lg,
+                    vertical: AppSpacing.md,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Exibe diálogo de confirmação antes de limpar o banco
+  Future<void> _confirmarLimpezaBanco() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 32),
+            const SizedBox(width: AppSpacing.sm),
+            Text(
+              'ATENÇÃO!',
+              style: GoogleFonts.poppins(
+                fontWeight: FontWeight.bold,
+                color: AppColors.error,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Você está prestes a APAGAR TODOS os dados do sistema:',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(
+                color: AppColors.error.withAlpha(26),
+                borderRadius: BorderRadius.circular(AppRadius.md),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('• Todos os SKUs cadastrados', style: GoogleFonts.poppins()),
+                  Text('• Todos os Lotes de validade', style: GoogleFonts.poppins()),
+                  Text('• Histórico de movimentações', style: GoogleFonts.poppins()),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              'Esta ação é IRREVERSÍVEL!',
+              style: GoogleFonts.poppins(
+                fontWeight: FontWeight.bold,
+                color: AppColors.error,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              'Tem certeza que deseja continuar?',
+              style: GoogleFonts.poppins(),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(
+              'Cancelar',
+              style: GoogleFonts.poppins(color: AppColors.textSecondary),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+            ),
+            child: Text(
+              'Sim, APAGAR TUDO',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirmed == true) {
+      await _executarLimpezaBanco();
+    }
+  }
+
+  /// Executa a limpeza do banco de dados
+  Future<void> _executarLimpezaBanco() async {
+    setState(() {
+      _isDeletingDatabase = true;
+    });
+    
+    try {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      
+      final response = await http.post(
+        Uri.parse('${Constants.apiUrl}skus/limpar_banco/'),
+        headers: {
+          'Authorization': 'Bearer ${authService.accessToken}',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'confirmacao': 'CONFIRMAR EXCLUSAO'}),
+      );
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Banco limpo! ${data['skus_deletados']} SKUs e ${data['lotes_deletados']} Lotes removidos.',
+              ),
+              backgroundColor: AppColors.success,
+            ),
+          );
+        }
+      } else {
+        final data = jsonDecode(response.body);
+        throw Exception(data['detail'] ?? 'Erro ao limpar banco');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro: ${e.toString()}'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDeletingDatabase = false;
+        });
+      }
+    }
   }
 
   Widget _buildConfigCard({

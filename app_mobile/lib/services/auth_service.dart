@@ -105,23 +105,26 @@ class Usuario {
   /// Verifica se o usuário é DIRETORIA (dashboards consolidados)
   bool get isDiretoria => maxPapel == 'DIRETORIA' || isSuperuser;
   
+  /// Verifica se o usuário é ADMIN (acesso total ao sistema)
+  bool get isAdmin => maxPapel == 'ADMIN' || isSuperuser;
+  
   /// Verifica se pode editar SKUs/Lotes (GERENTE ou superior)
-  bool get canEdit => isGerente || isDiretoria;
+  bool get canEdit => isGerente || isDiretoria || isAdmin;
   
-  /// Verifica se pode fazer upload de planilhas (GERENTE)
-  bool get canUpload => isGerente;
+  /// Verifica se pode fazer upload de planilhas (GERENTE ou ADMIN)
+  bool get canUpload => isGerente || isAdmin;
   
-  /// Verifica se pode gerenciar usuários (GERENTE ou DIRETORIA)
-  bool get canManageUsers => isGerente || isDiretoria;
+  /// Verifica se pode gerenciar usuários (GERENTE, DIRETORIA ou ADMIN)
+  bool get canManageUsers => isGerente || isDiretoria || isAdmin;
   
-  /// Verifica se pode acessar configurações (GERENTE ou DIRETORIA)
-  bool get canManageSettings => isGerente || isDiretoria;
+  /// Verifica se pode acessar configurações (GERENTE, DIRETORIA ou ADMIN)
+  bool get canManageSettings => isGerente || isDiretoria || isAdmin;
   
-  /// Verifica se pode ver dashboard consolidado (DIRETORIA)
-  bool get canViewConsolidated => isDiretoria;
+  /// Verifica se pode ver dashboard consolidado (DIRETORIA ou ADMIN)
+  bool get canViewConsolidated => isDiretoria || isAdmin;
   
-  /// Verifica se pode ver Dashboard e Relatório Estoque (GERENTE ou DIRETORIA)
-  bool get canViewDashboard => isGerente || isDiretoria;
+  /// Verifica se pode ver Dashboard e Relatório Estoque (GERENTE, DIRETORIA ou ADMIN)
+  bool get canViewDashboard => isGerente || isDiretoria || isAdmin;
   
   /// Retorna o perfil formatado para exibição na UI (ex: "Vendedor", "Gerente", "Diretoria")
   String get perfilLabel {
@@ -132,6 +135,8 @@ class Usuario {
         return 'Gerente';
       case 'DIRETORIA':
         return 'Diretoria';
+      case 'ADMIN':
+        return 'Administrador';
       default:
         return 'Usuário';
     }

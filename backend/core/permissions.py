@@ -5,6 +5,7 @@ Papéis:
 - VENDEDOR: Somente leitura (SKUs, Lotes)
 - GERENTE: CRUD completo na sua unidade
 - DIRETORIA: Dashboards e relatórios consolidados (todas unidades)
+- ADMIN: Acesso total ao sistema, incluindo operações destrutivas
 """
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
@@ -107,6 +108,23 @@ class IsDiretoria(BasePermission):
             return True
         
         return request.user.is_diretoria()
+
+
+class IsAdmin(BasePermission):
+    """
+    Permissão para ADMIN: acesso total ao sistema.
+    Usado para operações administrativas como limpeza de banco.
+    """
+    message = "Apenas administradores podem realizar esta operação."
+
+    def has_permission(self, request, view):
+        if not request.user.is_authenticated:
+            return False
+        
+        if request.user.is_superuser:
+            return True
+        
+        return request.user.is_admin()
 
 
 class IsGerenteOuDiretoria(BasePermission):

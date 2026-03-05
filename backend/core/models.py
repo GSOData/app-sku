@@ -153,18 +153,33 @@ class Usuario(AbstractUser):
             papel='DIRETORIA'
         ).exists()
 
+    def is_admin(self) -> bool:
+        """
+        Verifica se o usuário é ADMIN em qualquer unidade.
+        ADMIN tem acesso total ao sistema, incluindo operações destrutivas.
+        """
+        if self.is_superuser:
+            return True
+        from core.models import UsuarioUnidade
+        return UsuarioUnidade.objects.filter(
+            usuario=self,
+            papel='ADMIN'
+        ).exists()
+
     def get_max_papel(self) -> str:
         """
         Retorna o papel de maior privilégio do usuário.
-        Ordem: DIRETORIA > GERENTE > VENDEDOR
+        Ordem: ADMIN > DIRETORIA > GERENTE > VENDEDOR
         """
         if self.is_superuser:
-            return 'DIRETORIA'
+            return 'ADMIN'
         from core.models import UsuarioUnidade
         papeis = list(UsuarioUnidade.objects.filter(
             usuario=self
         ).values_list('papel', flat=True))
         
+        if 'ADMIN' in papeis:
+            return 'ADMIN'
         if 'DIRETORIA' in papeis:
             return 'DIRETORIA'
         if 'GERENTE' in papeis:
@@ -184,6 +199,7 @@ class UsuarioUnidade(models.Model):
         ('VENDEDOR', 'Vendedor'),      # Somente leitura
         ('GERENTE', 'Gerente'),        # CRUD completo na unidade
         ('DIRETORIA', 'Diretoria'),    # Dashboards e relatórios consolidados
+        ('ADMIN', 'Administrador'),    # Acesso total ao sistema
     ]
     
     usuario = models.ForeignKey(

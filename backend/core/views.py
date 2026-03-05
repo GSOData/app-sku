@@ -23,6 +23,7 @@ from .permissions import (
     IsVendedor,
     IsGerente,
     IsDiretoria,
+    IsAdmin,
     IsGerenteOuDiretoria,
     CanReadSKU,
     CanManageUpload,
@@ -464,6 +465,59 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
         ).order_by('data_validade')
         serializer = LoteValidadeResumoSerializer(lotes, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, IsAdmin])
+    def limpar_banco(self, request):
+        """
+        POST /api/skus/limpar_banco/
+        
+        PERIGO: Remove TODOS os SKUs e Lotes do sistema.
+        Apenas usuários ADMIN podem executar.
+        
+        Body (opcional):
+        {
+            "confirmacao": "CONFIRMAR EXCLUSAO"
+        }
+        """
+        # Exige confirmação explícita
+        confirmacao = request.data.get('confirmacao', '')
+        if confirmacao != 'CONFIRMAR EXCLUSAO':
+            return Response(
+                {
+                    'detail': 'Confirmação inválida. Envie {"confirmacao": "CONFIRMAR EXCLUSAO"} no body.',
+                    'error': 'confirmation_required'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Contagem antes da exclusão
+        total_skus = SKU.objects.count()
+        total_lotes = LoteValidade.objects.count()
+        
+        # Deleta todos os lotes (cascade)
+        LoteValidade.objects.all().delete()
+        
+        # Deleta todos os SKUs
+        SKU.objects.all().delete()
+        
+        # Log da operação
+        log_consulta(
+            usuario=request.user,
+            tipo='ADMIN_LIMPAR_BANCO',
+            parametros={
+                'skus_deletados': total_skus,
+                'lotes_deletados': total_lotes,
+                'ip': request.META.get('REMOTE_ADDR'),
+            },
+            request=request
+        )
+        
+        return Response({
+            'success': True,
+            'message': 'Banco de dados limpo com sucesso.',
+            'skus_deletados': total_skus,
+            'lotes_deletados': total_lotes,
+        })
 
 
 # =============================================================================
