@@ -474,7 +474,7 @@ class _SkuListScreenState extends State<SkuListScreen> {
                         _getUnidadeMedidaIcon(sku.unidadeMedida, size: 14),
                         const SizedBox(width: 4),
                         Text(
-                          'Qtd: ${sku.quantidadeTotal} ${sku.unidadeMedida ?? ''}',
+                          'Qtd: ${sku.quantidadeUnidade} ${sku.unidadeMedida ?? ''}',
                           style: GoogleFonts.poppins(
                             fontSize: AppFontSizes.caption,
                             color: AppColors.textSecondary,

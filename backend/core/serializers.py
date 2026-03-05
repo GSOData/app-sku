@@ -396,6 +396,7 @@ class SKUListSerializer(serializers.ModelSerializer):
     status_texto = serializers.SerializerMethodField()
     status_cor = serializers.SerializerMethodField()
     quantidade_total = serializers.SerializerMethodField()
+    quantidade_unidade = serializers.SerializerMethodField()
     valor_estoque = serializers.SerializerMethodField()
     imagem_url = serializers.SerializerMethodField()
     
@@ -411,6 +412,7 @@ class SKUListSerializer(serializers.ModelSerializer):
             'status_texto',
             'status_cor',
             'quantidade_total',
+            'quantidade_unidade',
             'valor_estoque',
             'imagem_url',
         ]
@@ -426,7 +428,14 @@ class SKUListSerializer(serializers.ModelSerializer):
         return STATUS_CORES.get(status, '#9E9E9E')
     
     def get_quantidade_total(self, obj) -> int:
+        """Quantidade total em unidades base."""
         return obj.quantidade_total_estoque
+    
+    def get_quantidade_unidade(self, obj) -> int:
+        """Quantidade na unidade de medida do SKU (ex: caixas)."""
+        total = obj.quantidade_total_estoque
+        fator = obj.fator_conversao or 1
+        return total // fator if fator > 0 else total
     
     def get_valor_estoque(self, obj) -> float:
         """Retorna o valor total do estoque (qtd * custo)."""

@@ -61,6 +61,7 @@ class Sku {
   final String? descricao;
   final String? imagemUrl;
   final int quantidadeTotal;
+  final int quantidadeUnidade;  // Quantidade na unidade de medida do SKU (ex: caixas)
   final int quantidadeTransito;
   final double valorEstoque;
   final LoteResumo? loteMaisProximo;
@@ -79,6 +80,7 @@ class Sku {
     this.descricao,
     this.imagemUrl,
     this.quantidadeTotal = 0,
+    this.quantidadeUnidade = 0,
     this.quantidadeTransito = 0,
     this.valorEstoque = 0.0,
     this.loteMaisProximo,
@@ -89,6 +91,7 @@ class Sku {
   });
 
   factory Sku.fromJson(Map<String, dynamic> json) {
+    final qtdTotal = json['quantidade_total'] ?? json['quantidade'] ?? 0;
     return Sku(
       id: json['id'] ?? 0,
       codigoSku: json['codigo_sku'] ?? '',
@@ -100,7 +103,10 @@ class Sku {
       unidadeMedida: json['unidade_medida'],
       descricao: json['descricao'],
       imagemUrl: json['imagem_url'],
-      quantidadeTotal: json['quantidade_total'] ?? 0,
+      // Aceita 'quantidade_total' ou 'quantidade' (usado no relatório de criticidade)
+      quantidadeTotal: qtdTotal,
+      // Quantidade na unidade de medida do SKU (usa total como fallback)
+      quantidadeUnidade: json['quantidade_unidade'] ?? qtdTotal,
       quantidadeTransito: json['quantidade_transito'] ?? 0,
       valorEstoque: (json['valor_estoque'] ?? 0).toDouble(),
       loteMaisProximo: json['lote_mais_proximo'] != null
@@ -108,7 +114,7 @@ class Sku {
           : null,
       statusTexto: json['status_texto'] ?? 'Indefinido',
       statusCor: json['status_cor'] ?? '#9E9E9E',
-      statusDiasRestantes: json['status_dias_restantes'],
+      statusDiasRestantes: json['status_dias_restantes'] ?? json['dias_restantes'],
       ativo: json['ativo'] ?? true,
     );
   }
