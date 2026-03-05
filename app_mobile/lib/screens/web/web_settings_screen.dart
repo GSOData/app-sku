@@ -363,7 +363,7 @@ class _WebSettingsScreenState extends State<WebSettingsScreen> {
     final authService = Provider.of<AuthService>(context, listen: false);
     
     // Só mostra para usuários ADMIN
-    if (!authService.currentUser!.isAdmin) {
+    if (!authService.usuario!.isAdmin) {
       return const SizedBox.shrink();
     }
     
