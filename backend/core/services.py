@@ -3,6 +3,7 @@ Services para processamento de dados do SKU+.
 
 Inclui:
 - EstoqueImportService: Importação de planilhas de estoque
+- definir_categoria: Classificação automática de SKUs por palavras-chave
 """
 
 import pandas as pd
@@ -14,6 +15,84 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from .models import SKU, LoteValidade, UnidadeNegocio
+
+
+# =============================================================================
+# REGRAS DE CLASSIFICAÇÃO POR CATEGORIA
+# =============================================================================
+REGRAS_CATEGORIA = {
+    'CERVEJA': [
+        'SKOL', 'BRAHMA', 'ANTARCTICA PILSEN', 'ANTARCTICA SUBZERO', 
+        'ORIGINAL', 'BUDWEISER', 'MICHELOB', 'CORONA', 'CORONITA', 
+        'STELLA', 'SPATEN', 'BOHEMIA', 'MALZBIER'
+    ],
+    'REFRIGERANTE': [
+        'GUARANA', 'PEPSI', 'SUKITA', 'SODA', 'H2OH', 'TONICA'
+    ],
+    'ICE E MISTAS': [
+        'BEATS', 'ICE'
+    ],
+    'ÁGUA': [
+        'INDAIA', 'PETROPOLIS AGUA', 'AGUA MIN'
+    ],
+    'SUCO': [
+        'TIAL'
+    ],
+    'ISOTÔNICO': [
+        'GATORADE'
+    ],
+    'ENERGÉTICO': [
+        'RED BULL'
+    ],
+    'DESTILADO': [
+        'JOHNNIE WALKER', 'ABSOLUT', 'SMIRNOFF ORIGINAL', 'MONTILLA', 
+        'BALLANTINES', 'PIRASSUNUNGA', 'PASSPORT', 'DOMECQ', 'PITU'
+    ],
+    'VINHO': [
+        'QUINTA DO MORGADO', 'VINHO'
+    ],
+    'BOMBONIERE': [
+        'TRIDENT', 'HALLS', 'CHICLETE'
+    ],
+    'LIMPEZA': [
+        'YPE'
+    ],
+    'ACESSÓRIOS': [
+        'GARRAFEIRA', 'CERVEGELA'
+    ],
+}
+
+# Ordem de verificação (ICE E MISTAS antes de DESTILADO para evitar conflitos)
+ORDEM_CATEGORIAS = [
+    'CERVEJA', 'REFRIGERANTE', 'ICE E MISTAS', 'ÁGUA', 'SUCO',
+    'ISOTÔNICO', 'ENERGÉTICO', 'DESTILADO', 'VINHO', 
+    'BOMBONIERE', 'LIMPEZA', 'ACESSÓRIOS'
+]
+
+
+def definir_categoria(nome_produto: str) -> str:
+    """
+    Define a categoria de um produto baseado em palavras-chave no nome.
+    
+    Args:
+        nome_produto: Nome do produto para classificar
+        
+    Returns:
+        String com a categoria (ex: 'CERVEJA', 'REFRIGERANTE', 'OUTROS')
+    """
+    if not nome_produto:
+        return 'OUTROS'
+    
+    nome_upper = nome_produto.upper()
+    
+    # Verifica na ordem definida para evitar conflitos
+    for categoria in ORDEM_CATEGORIAS:
+        palavras_chave = REGRAS_CATEGORIA.get(categoria, [])
+        for palavra in palavras_chave:
+            if palavra in nome_upper:
+                return categoria
+    
+    return 'OUTROS'
 
 
 class EstoqueImportService:
@@ -201,6 +280,7 @@ class EstoqueImportService:
                             'nome_produto': str(row['nome_produto']).strip(),
                             'unidade_medida': str(row['unidade_medida']).strip().upper(),
                             'fator_conversao': int(row['fator_conversao']),
+                            'categoria': definir_categoria(str(row['nome_produto'])),
                         }
                     )
                     
@@ -209,6 +289,9 @@ class EstoqueImportService:
                         sku.nome_produto = str(row['nome_produto']).strip()
                         sku.unidade_medida = str(row['unidade_medida']).strip().upper()
                         sku.fator_conversao = int(row['fator_conversao'])
+                        # Reclassifica categoria se ainda for OUTROS ou vazia
+                        if not sku.categoria or sku.categoria == 'OUTROS':
+                            sku.categoria = definir_categoria(sku.nome_produto)
                         sku.save()
                         self.updated_count += 1
                     else:

@@ -136,10 +136,12 @@ class SkuService {
   /// 
   /// [query] - Termo de busca (codigo_sku ou nome_produto)
   /// [unidadeId] - Filtrar por unidade de negócio (usa unidade ativa por padrão)
+  /// [categoria] - Filtrar por categoria (ex: 'CERVEJA', 'REFRIGERANTE')
   /// [page] - Página da paginação
   Future<PaginatedResult<Sku>> getSkus({
     String? query,
     int? unidadeId,
+    String? categoria,
     int page = 1,
   }) async {
     try {
@@ -158,6 +160,11 @@ class SkuService {
       // Sempre envia unidade_id (obrigatório no backend)
       if (effectiveUnidadeId != null) {
         queryParams['unidade_id'] = effectiveUnidadeId.toString();
+      }
+
+      // Filtro por categoria
+      if (categoria != null && categoria.isNotEmpty) {
+        queryParams['categoria'] = categoria;
       }
 
       final uri = Uri.parse('${Constants.apiUrl}skus/').replace(queryParameters: queryParams);

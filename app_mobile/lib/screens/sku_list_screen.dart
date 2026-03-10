@@ -33,6 +33,27 @@ class _SkuListScreenState extends State<SkuListScreen> {
   int _totalCount = 0;
   bool _hasMore = true;
 
+  // Filtro por categoria
+  String _categoriaSelecionada = 'Todas';
+  
+  // Lista de categorias disponíveis
+  static const List<String> _categorias = [
+    'Todas',
+    'Cerveja',
+    'Refrigerante',
+    'Ice e Mistas',
+    'Água',
+    'Suco',
+    'Isotônico',
+    'Energético',
+    'Destilado',
+    'Vinho',
+    'Bomboniere',
+    'Limpeza',
+    'Acessórios',
+    'Outros',
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -70,7 +91,14 @@ class _SkuListScreenState extends State<SkuListScreen> {
     });
 
     try {
-      final result = await _skuService.getSkus(query: query, page: 1);
+      // Converte categoria selecionada para formato da API
+      final categoriaApi = _getCategoriaParaApi();
+      
+      final result = await _skuService.getSkus(
+        query: query, 
+        page: 1,
+        categoria: categoriaApi,
+      );
       setState(() {
         _skus = result.results;
         _totalCount = result.count;
@@ -90,6 +118,23 @@ class _SkuListScreenState extends State<SkuListScreen> {
     }
   }
   
+  /// Converte o nome da categoria selecionada para o formato da API
+  String? _getCategoriaParaApi() {
+    if (_categoriaSelecionada == 'Todas') return null;
+    
+    // Converte para uppercase e substitui espaços
+    return _categoriaSelecionada.toUpperCase().replaceAll(' ', ' ');
+  }
+  
+  /// Atualiza a categoria selecionada e recarrega a lista
+  void _onCategoriaChanged(String categoria) {
+    setState(() {
+      _categoriaSelecionada = categoria;
+    });
+    final query = _searchController.text.trim();
+    _loadSkus(query: query.isNotEmpty ? query : null);
+  }
+  
   Future<void> _loadMoreSkus() async {
     if (_isLoadingMore || !_hasMore) return;
     
@@ -99,9 +144,12 @@ class _SkuListScreenState extends State<SkuListScreen> {
 
     try {
       final query = _searchController.text.trim();
+      final categoriaApi = _getCategoriaParaApi();
+      
       final result = await _skuService.getSkus(
         query: query.isNotEmpty ? query : null,
         page: _currentPage + 1,
+        categoria: categoriaApi,
       );
       setState(() {
         _skus.addAll(result.results);
@@ -183,11 +231,58 @@ class _SkuListScreenState extends State<SkuListScreen> {
           // Barra de busca
           _buildSearchBar(),
 
+          // Filtro por categoria
+          _buildCategoryFilter(),
+
           // Lista de resultados
           Expanded(
             child: _buildContent(),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryFilter() {
+    return Container(
+      height: 50,
+      color: AppColors.surface,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+        itemCount: _categorias.length,
+        itemBuilder: (context, index) {
+          final categoria = _categorias[index];
+          final isSelected = _categoriaSelecionada == categoria;
+          
+          return Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.xs,
+              vertical: AppSpacing.sm,
+            ),
+            child: ChoiceChip(
+              label: Text(
+                categoria,
+                style: GoogleFonts.poppins(
+                  fontSize: AppFontSizes.caption,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                  color: isSelected ? Colors.white : AppColors.textPrimary,
+                ),
+              ),
+              selected: isSelected,
+              onSelected: (_) => _onCategoriaChanged(categoria),
+              selectedColor: AppColors.primary,
+              backgroundColor: AppColors.background,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                side: BorderSide(
+                  color: isSelected ? AppColors.primary : AppColors.divider,
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+            ),
+          );
+        },
       ),
     );
   }
