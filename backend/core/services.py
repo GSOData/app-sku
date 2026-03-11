@@ -29,8 +29,11 @@ REGRAS_CATEGORIA = {
     'REFRIGERANTE': [
         'GUARANA', 'PEPSI', 'SUKITA', 'SODA', 'H2OH', 'TONICA'
     ],
+    'BEATS': [
+        'BEATS'
+    ],
     'ICE E MISTAS': [
-        'BEATS', 'ICE'
+        'ICE'
     ],
     'ÁGUA': [
         'INDAIA', 'PETROPOLIS AGUA', 'AGUA MIN'
@@ -64,9 +67,9 @@ REGRAS_CATEGORIA = {
 
 # Ordem de verificação (ICE E MISTAS antes de DESTILADO para evitar conflitos)
 ORDEM_CATEGORIAS = [
-    'CERVEJA', 'REFRIGERANTE', 'ICE E MISTAS', 'ÁGUA', 'SUCO',
+    'BEATS', 'ICE E MISTAS', 'ÁGUA', 'SUCO',
     'ISOTÔNICO', 'ENERGÉTICO', 'DESTILADO', 'VINHO', 
-    'BOMBONIERE', 'LIMPEZA', 'ACESSÓRIOS'
+    'BOMBONIERE', 'LIMPEZA', 'ACESSÓRIOS', 'REFRIGERANTE', 'CERVEJA'
 ]
 
 

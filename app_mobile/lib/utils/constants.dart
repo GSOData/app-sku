@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 class Constants {
   /// URL base da API
-  static const String apiUrl = 'https://app-sku-api.onrender.com/api/';
+  static const String apiUrl = 'http://31.97.83.219/api/';
 }
 
 /// Chaves para SharedPreferences
