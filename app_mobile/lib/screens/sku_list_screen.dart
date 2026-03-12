@@ -51,7 +51,6 @@ class _SkuListScreenState extends State<SkuListScreen> {
     'Vinho',
     'Doces',
     'Limpeza',
-    'Acessórios',
     'Outros',
   ];
 
