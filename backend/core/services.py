@@ -39,7 +39,7 @@ REGRAS_CATEGORIA = {
         'INDAIA', 'PETROPOLIS AGUA', 'AGUA MIN'
     ],
     'SUCO': [
-        'TIAL'
+        'TIAL', 'TANG'
     ],
     'ISOTÔNICO': [
         'GATORADE'
@@ -49,18 +49,18 @@ REGRAS_CATEGORIA = {
     ],
     'DESTILADO': [
         'JOHNNIE WALKER', 'ABSOLUT', 'SMIRNOFF ORIGINAL', 'MONTILLA', 
-        'BALLANTINES', 'PIRASSUNUNGA', 'PASSPORT', 'DOMECQ', 'PITU'
+        'BALLANTINES', 'PIRASSUNUNGA', 'PASSPORT', 'DOMECQ', 'PITU', 'WHISKY'
     ],
     'VINHO': [
         'QUINTA DO MORGADO', 'VINHO'
     ],
-    'BOMBONIERE': [
+    'DOCES': [
         'TRIDENT', 'HALLS', 'CHICLETE'
     ],
     'LIMPEZA': [
         'YPE'
     ],
-    'ACESSÓRIOS': [
+    'OUTROS': [
         'GARRAFEIRA', 'CERVEGELA'
     ],
 }
@@ -69,7 +69,7 @@ REGRAS_CATEGORIA = {
 ORDEM_CATEGORIAS = [
     'BEATS', 'ICE E MISTAS', 'ÁGUA', 'SUCO',
     'ISOTÔNICO', 'ENERGÉTICO', 'DESTILADO', 'VINHO', 
-    'BOMBONIERE', 'LIMPEZA', 'ACESSÓRIOS', 'REFRIGERANTE', 'CERVEJA'
+    'DOCES', 'LIMPEZA', 'REFRIGERANTE', 'CERVEJA', 'OUTROS'
 ]
 
 
