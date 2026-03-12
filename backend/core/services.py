@@ -113,8 +113,8 @@ class EstoqueImportService:
         'Descricao': 'nome_produto',
         'Unidade': 'unidade_medida',
         'Fator': 'fator_conversao',
-        'Inventario': 'estoque_display',
-        'Qtd Contagem': 'qtd_estoque',
+        'Disponivel': 'estoque_display',
+        'Qtd Estoque': 'qtd_estoque',
     }
     
     # Mapeamento de colunas para Contagens
@@ -241,8 +241,8 @@ class EstoqueImportService:
         - Descricao: Nome do produto
         - Unidade: Unidade de medida (cx, un, etc)
         - Fator: Fator de conversão
-        - Inventario: Texto original (ex: "388/06")
-        - Qtd Contagem: Quantidade total em unidades
+        - Disponivel: Texto original (ex: "388/06")
+        - Qtd Estoque: Quantidade total em unidades
         
         Args:
             file: Arquivo upload
