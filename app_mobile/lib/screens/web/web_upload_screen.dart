@@ -314,6 +314,7 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
     required List<String> columns,
   }) {
     final isSelected = _uploadType == uploadType && _selectedFileName != null;
+    final rowBottomSpacing = uploadType == 'contagens' ? 6.0 : 2.0;
     
     return Container(
       padding: const EdgeInsets.all(AppSpacing.lg),
@@ -377,7 +378,7 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
           ),
           const SizedBox(height: AppSpacing.xs),
           ...columns.map((col) => Padding(
-            padding: const EdgeInsets.only(bottom: 2),
+            padding: EdgeInsets.only(bottom: rowBottomSpacing),
             child: Row(
               children: [
                 Icon(Icons.check_circle, size: 12, color: color),
@@ -395,6 +396,8 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
             ),
           )),
           
+          const Spacer(),
+
           const SizedBox(height: AppSpacing.md),
           
           // Botão de selecionar arquivo
@@ -419,7 +422,7 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
           
           if (_selectedUnidade == null)
             Padding(
-              padding: const EdgeInsets.only(top: AppSpacing.xs),
+              padding: const EdgeInsets.only(top: AppSpacing.sm),
               child: Text(
                 'Selecione uma unidade primeiro',
                 style: GoogleFonts.poppins(

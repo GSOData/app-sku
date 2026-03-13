@@ -60,6 +60,8 @@ class ApiUsuario {
   /// Label do papel
   String get papelLabel {
     switch (maxPapel) {
+      case 'ADMIN':
+        return 'Administrador';
       case 'DIRETORIA':
         return 'Diretoria';
       case 'GERENTE':
@@ -101,6 +103,8 @@ class UsuarioUnidadeVinculo {
   
   String get papelLabel {
     switch (papel) {
+      case 'ADMIN':
+        return 'Administrador';
       case 'DIRETORIA':
         return 'Diretoria';
       case 'GERENTE':
@@ -232,7 +236,7 @@ class UserService extends ChangeNotifier {
   }
 
   /// Cria novo usuário
-  Future<bool> createUsuario({
+  Future<ApiUsuario?> createUsuario({
     required String username,
     required String email,
     required String password,
@@ -276,15 +280,15 @@ class UserService extends ChangeNotifier {
         
         // Recarrega lista
         await loadUsuarios();
-        return true;
+        return novoUsuario;
       } else {
         final error = jsonDecode(response.body);
         _errorMessage = error['detail'] ?? 'Erro ao criar usuário';
-        return false;
+        return null;
       }
     } catch (e) {
       _errorMessage = 'Erro de conexão: $e';
-      return false;
+      return null;
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -403,6 +407,9 @@ class UserService extends ChangeNotifier {
   /// Converte label de papel para valor da API
   String _papelToApi(String label) {
     switch (label.toLowerCase()) {
+      case 'admin':
+      case 'administrador':
+        return 'ADMIN';
       case 'diretoria':
         return 'DIRETORIA';
       case 'gerente':

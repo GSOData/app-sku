@@ -27,6 +27,11 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
   late UserService _userService;
   bool _initialized = false;
 
+  String _formatUnidadeSigla(String? codigo) {
+    if (codigo == null || codigo.isEmpty) return 'N/A';
+    return _unidadeSiglas[codigo] ?? codigo;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -317,15 +322,17 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
                   ),
                   const SizedBox(height: 2),
                   // Email
-                  Text(
-                    user.email,
-                    style: GoogleFonts.poppins(
-                      fontSize: AppFontSizes.body,
-                      color: AppColors.textSecondary,
+                  if (user.email.isNotEmpty) ...[
+                    Text(
+                      user.email,
+                      style: GoogleFonts.poppins(
+                        fontSize: AppFontSizes.body,
+                        color: AppColors.textSecondary,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
+                    const SizedBox(height: AppSpacing.sm),
+                  ],
                   // Badges de Papel e Status
                   Row(
                     children: [
@@ -334,6 +341,25 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
                       _buildMobileStatusIndicator(user.isActive),
                     ],
                   ),
+                  if (user.unidadesAcesso.isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: user.unidadesAcesso.map((v) {
+                        final sigla = _formatUnidadeSigla(v.unidade?.codigoUnb);
+                        return Chip(
+                          label: Text(
+                            sigla,
+                            style: GoogleFonts.poppins(fontSize: 10),
+                          ),
+                          labelPadding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        );
+                      }).toList(),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -789,12 +815,12 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
         DataCell(
           Wrap(
             spacing: 4,
-            children: user.unidadesAcesso.take(2).map((v) {
-              final codigo = v.unidade?.codigoUnb ?? '';
-              final sigla = _unidadeSiglas[codigo] ?? codigo;
+            runSpacing: 4,
+            children: user.unidadesAcesso.map((v) {
+              final sigla = _formatUnidadeSigla(v.unidade?.codigoUnb);
               return Chip(
                 label: Text(
-                  sigla.isNotEmpty ? sigla : 'N/A',
+                  sigla,
                   style: GoogleFonts.poppins(fontSize: 10),
                 ),
                 labelPadding: EdgeInsets.zero,
@@ -833,6 +859,9 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
   Widget _buildPapelBadge(String papel) {
     Color color;
     switch (papel) {
+      case 'Administrador':
+        color = AppColors.error;
+        break;
       case 'Diretoria':
         color = AppColors.warning;
         break;
@@ -1042,6 +1071,7 @@ class _UserFormDialogState extends State<_UserFormDialog> {
   late TextEditingController _lastNameController;
   late TextEditingController _passwordController;
   String _selectedPapel = 'VENDEDOR';
+  late List<int> _selectedUnidadeIds;
   bool _isLoading = false;
 
   @override
@@ -1053,6 +1083,11 @@ class _UserFormDialogState extends State<_UserFormDialog> {
     _lastNameController = TextEditingController(text: widget.user?.lastName ?? '');
     _passwordController = TextEditingController();
     _selectedPapel = widget.user?.maxPapel ?? 'VENDEDOR';
+    _selectedUnidadeIds = widget.user?.unidadesAcesso
+        .map((v) => v.unidadeId ?? v.unidade?.id)
+        .whereType<int>()
+        .toList() ??
+      [];
   }
 
   @override
@@ -1068,6 +1103,12 @@ class _UserFormDialogState extends State<_UserFormDialog> {
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.user != null;
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final unidadesDisponiveis = authService.unidadesPermitidas;
+
+    if (_selectedUnidadeIds.isEmpty && !isEditing && authService.unidadeAtiva != null) {
+      _selectedUnidadeIds = [authService.unidadeAtiva!.id];
+    }
 
     return Dialog(
       shape: RoundedRectangleBorder(
@@ -1186,6 +1227,39 @@ class _UserFormDialogState extends State<_UserFormDialog> {
                 onChanged: (v) => setState(() => _selectedPapel = v!),
               ),
 
+              if (unidadesDisponiveis.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  'Unidades de Acesso',
+                  style: GoogleFonts.poppins(
+                    fontSize: AppFontSizes.body,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Wrap(
+                  spacing: AppSpacing.xs,
+                  runSpacing: AppSpacing.xs,
+                  children: unidadesDisponiveis.map((unidade) {
+                    final selected = _selectedUnidadeIds.contains(unidade.id);
+                    return FilterChip(
+                      label: Text('${unidade.codigoUnb} - ${unidade.nome}'),
+                      selected: selected,
+                      onSelected: (value) {
+                        setState(() {
+                          if (value) {
+                            _selectedUnidadeIds.add(unidade.id);
+                          } else {
+                            _selectedUnidadeIds.remove(unidade.id);
+                          }
+                        });
+                      },
+                    );
+                  }).toList(),
+                ),
+              ],
+
               const SizedBox(height: AppSpacing.lg),
 
               // Botões
@@ -1222,29 +1296,79 @@ class _UserFormDialogState extends State<_UserFormDialog> {
 
   Future<void> _salvar() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_selectedUnidadeIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Selecione ao menos uma unidade de acesso.'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
 
     setState(() => _isLoading = true);
 
-    bool success;
+    bool success = false;
     if (widget.user != null) {
       // Edição
       success = await widget.userService.updateUsuario(widget.user!.id, {
         'first_name': _firstNameController.text,
         'last_name': _lastNameController.text,
         'email': _emailController.text,
+        'max_papel': _selectedPapel,
       });
+
+      if (success) {
+        final currentIds = widget.user!.unidadesAcesso
+            .map((v) => v.unidadeId ?? v.unidade?.id)
+            .whereType<int>()
+            .toSet();
+        final selectedIds = _selectedUnidadeIds.toSet();
+
+        for (final unidadeId in selectedIds.difference(currentIds)) {
+          final linked = await widget.userService
+              .vincularUnidade(widget.user!.id, unidadeId, _selectedPapel);
+          if (!linked) {
+            success = false;
+            break;
+          }
+        }
+
+        if (success) {
+          for (final unidadeId in currentIds.difference(selectedIds)) {
+            final unlinked = await widget.userService
+                .desvincularUnidade(widget.user!.id, unidadeId);
+            if (!unlinked) {
+              success = false;
+              break;
+            }
+          }
+        }
+      }
     } else {
       // Criação
-      final authService = Provider.of<AuthService>(context, listen: false);
-      success = await widget.userService.createUsuario(
+      final novoUsuario = await widget.userService.createUsuario(
         username: _usernameController.text,
         email: _emailController.text,
         password: _passwordController.text,
         firstName: _firstNameController.text,
         lastName: _lastNameController.text,
-        unidadeId: authService.unidadeAtiva?.id,
+        unidadeId: null,
         papel: _selectedPapel,
       );
+
+      success = novoUsuario != null;
+
+      if (success && novoUsuario != null) {
+        for (final unidadeId in _selectedUnidadeIds) {
+          final linked = await widget.userService
+              .vincularUnidade(novoUsuario.id, unidadeId, _selectedPapel);
+          if (!linked) {
+            success = false;
+            break;
+          }
+        }
+      }
     }
 
     setState(() => _isLoading = false);

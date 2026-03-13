@@ -67,7 +67,10 @@ class _StockReportScreenState extends State<StockReportScreen> {
         // Usa o valor real do estoque calculado no backend
         valorTotal += sku.valorEstoque;
 
-        if (sku.statusTexto.toLowerCase() == 'vencido') {
+        final status = sku.statusTexto.toLowerCase();
+        final isVencidoOuSemLote = status.contains('vencido') || status.contains('sem lote');
+
+        if (isVencidoOuSemLote) {
           vencidosCount++;
           qtdVencida += sku.quantidadeTotal;
         }
