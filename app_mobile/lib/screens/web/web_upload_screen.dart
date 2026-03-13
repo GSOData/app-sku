@@ -242,8 +242,9 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
             const SizedBox(height: AppSpacing.md),
             
             // Dois cards de upload lado a lado
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // Upload Grade 020502
                 Expanded(
@@ -608,7 +609,7 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
-              '3. Selecione o arquivo .xlsx, .xls ou .csv com as colunas corretas.',
+              '3. Selecione o arquivo .xlsx com as colunas corretas.',
               style: GoogleFonts.poppins(
                 fontSize: AppFontSizes.body,
                 color: AppColors.textSecondary,
@@ -637,7 +638,7 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
-                      'Formatos aceitos: .xlsx, .xls, .csv (máximo 10MB)',
+                      'Formatos aceitos: .xlsx (máximo 10MB)',
                       style: GoogleFonts.poppins(
                         fontSize: AppFontSizes.body,
                         color: AppColors.warning,

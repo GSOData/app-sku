@@ -16,6 +16,12 @@ class WebUserManagementScreen extends StatefulWidget {
 }
 
 class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
+  static const Map<String, String> _unidadeSiglas = {
+    '505145': 'JZ',
+    '585505': 'PE',
+    '538663': 'BF',
+  };
+
   final TextEditingController _searchController = TextEditingController();
   String _selectedFilter = 'Todos';
   late UserService _userService;
@@ -646,7 +652,7 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
                 value: _selectedFilter,
-                items: ['Todos', 'Diretoria', 'Gerente', 'Vendedor']
+                items: ['Todos', 'Admin', 'Diretoria', 'Gerente', 'Vendedor']
                     .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                     .toList(),
                 onChanged: (value) {
@@ -784,9 +790,11 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
           Wrap(
             spacing: 4,
             children: user.unidadesAcesso.take(2).map((v) {
+              final codigo = v.unidade?.codigoUnb ?? '';
+              final sigla = _unidadeSiglas[codigo] ?? codigo;
               return Chip(
                 label: Text(
-                  v.unidade?.codigoUnb ?? 'N/A',
+                  sigla.isNotEmpty ? sigla : 'N/A',
                   style: GoogleFonts.poppins(fontSize: 10),
                 ),
                 labelPadding: EdgeInsets.zero,
@@ -1139,8 +1147,7 @@ class _UserFormDialogState extends State<_UserFormDialog> {
                   border: OutlineInputBorder(),
                 ),
                 validator: (v) {
-                  if (v?.isEmpty ?? true) return 'Obrigatório';
-                  if (!v!.contains('@')) return 'Email inválido';
+                  if (v != null && v.isNotEmpty && !v.contains('@')) return 'Email inválido';
                   return null;
                 },
               ),
@@ -1156,8 +1163,8 @@ class _UserFormDialogState extends State<_UserFormDialog> {
                   obscureText: true,
                   validator: (v) {
                     if (!isEditing && (v?.isEmpty ?? true)) return 'Obrigatório';
-                    if (v != null && v.isNotEmpty && v.length < 8) {
-                      return 'Mínimo 8 caracteres';
+                    if (v != null && v.isNotEmpty && v.length < 6) {
+                      return 'Mínimo 6 caracteres';
                     }
                     return null;
                   },
@@ -1174,6 +1181,7 @@ class _UserFormDialogState extends State<_UserFormDialog> {
                   const DropdownMenuItem(value: 'VENDEDOR', child: Text('Vendedor')),
                   const DropdownMenuItem(value: 'GERENTE', child: Text('Gerente')),
                   const DropdownMenuItem(value: 'DIRETORIA', child: Text('Diretoria')),
+                  const DropdownMenuItem(value: 'ADMIN', child: Text('Administrador')),
                 ],
                 onChanged: (v) => setState(() => _selectedPapel = v!),
               ),

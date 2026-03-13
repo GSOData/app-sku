@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 import '../utils/constants.dart';
 import '../screens/web/web_dashboard_screen.dart';
 import '../screens/web/web_user_management_screen.dart';
@@ -288,6 +289,8 @@ class WebNavigationMenu extends StatelessWidget {
   Widget _buildMenuItems(BuildContext context) {
     final authService = Provider.of<AuthService>(context);
     final usuario = authService.usuario;
+    final notificationService = Provider.of<NotificationService>(context);
+    final criticalCount = notificationService.totalAlertas;
     
     // Valores padrão para usuários não autenticados ou sem papel definido
     final canUpload = usuario?.canUpload ?? false;
@@ -333,7 +336,7 @@ class WebNavigationMenu extends StatelessWidget {
           activeIcon: Icons.warning_amber,
           label: 'Itens Críticos',
           section: WebMenuSection.critical,
-          badge: '12',
+          badge: criticalCount > 0 ? '$criticalCount' : null,
           badgeColor: AppColors.error,
           onTap: () => _navigateTo(context, WebMenuSection.critical),
         ),

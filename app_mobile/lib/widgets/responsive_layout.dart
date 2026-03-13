@@ -284,24 +284,9 @@ class _ResponsiveLayoutState extends State<ResponsiveLayout> {
             onSelected: (value) {
               if (value == 'logout') {
                 _handleLogout(context);
-              } else if (value == 'profile') {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Perfil em breve!')),
-                );
               }
             },
             itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'profile',
-                child: Row(
-                  children: [
-                    Icon(Icons.person_outline, color: AppColors.textSecondary),
-                    const SizedBox(width: AppSpacing.sm),
-                    const Text('Meu Perfil'),
-                  ],
-                ),
-              ),
-              const PopupMenuDivider(),
               PopupMenuItem(
                 value: 'logout',
                 child: Row(

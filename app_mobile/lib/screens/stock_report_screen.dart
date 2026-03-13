@@ -255,26 +255,15 @@ class _StockReportScreenState extends State<StockReportScreen> {
 
           const SizedBox(height: AppSpacing.md),
 
-          // Segunda linha: Valor Total
-          _buildMetricCard(
-            icon: Icons.attach_money,
-            title: 'Valor Total em Estoque',
-            value: _currencyFormat.format(_valorTotalEstoque),
-            color: AppColors.success,
-            isLarge: true,
-          ),
-
-          const SizedBox(height: AppSpacing.md),
-
-          // Terceira linha: Itens Vencidos
+          // Segunda linha: Vencido / Sem Lote Definido
           _buildMetricCard(
             icon: Icons.warning_amber,
-            title: 'Itens Vencidos',
+            title: 'Vencido / Sem Lote Definido',
             value: '$_itensVencidos SKUs ($_quantidadeVencida unidades)',
             color: _itensVencidos > 0 ? AppColors.error : AppColors.success,
             subtitle: _itensVencidos > 0
                 ? 'Atenção: produtos vencidos no estoque!'
-                : 'Nenhum produto vencido 👍',
+                : 'Nenhum lote definido ✅',
           ),
         ],
       ),

@@ -186,7 +186,7 @@ class _CriticalItemsScreenState extends State<CriticalItemsScreen> {
         children: [
           Expanded(
             child: _buildSummaryTile(
-              'Vencidos',
+              'Vencido / Sem Lote',
               _vencidosCount,
               Colors.black,
               Icons.block,
