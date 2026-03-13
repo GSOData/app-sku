@@ -245,45 +245,46 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
             IntrinsicHeight(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Upload Grade 020502
-                Expanded(
-                  child: _buildUploadCard(
-                    title: 'Estoque Total (020502)',
-                    subtitle: 'Importa grade diária de inventário',
-                    icon: Icons.inventory_2_outlined,
-                    color: AppColors.primary,
-                    uploadType: 'grade',
-                    columns: [
-                      'Produto (Código SKU)',
-                      'Descricao',
-                      'Unidade (cx, un, etc)',
-                      'Fator (conversão)',
-                      'Inventario (texto)',
-                      'Qtd Contagem',
-                    ],
+                children: [
+                  // Upload Grade 020502
+                  Expanded(
+                    child: _buildUploadCard(
+                      title: 'Estoque Total (020502)',
+                      subtitle: 'Importa grade diária de inventário',
+                      icon: Icons.inventory_2_outlined,
+                      color: AppColors.primary,
+                      uploadType: 'grade',
+                      columns: [
+                        'Produto (Código SKU)',
+                        'Descricao',
+                        'Unidade (cx, un, etc)',
+                        'Fator (conversão)',
+                        'Inventario (texto)',
+                        'Qtd Contagem',
+                      ],
+                    ),
                   ),
-                ),
-                
-                const SizedBox(width: AppSpacing.lg),
-                
-                // Upload Contagens
-                Expanded(
-                  child: _buildUploadCard(
-                    title: 'Validades (Contagens)',
-                    subtitle: 'Importa conciliação semanal de validades',
-                    icon: Icons.event_available,
-                    color: AppColors.success,
-                    uploadType: 'contagens',
-                    columns: [
-                      'Código Item',
-                      'Validade Aferida',
-                      'Quantidade Cx',
-                      'Quantidade Unidade',
-                    ],
+
+                  const SizedBox(width: AppSpacing.lg),
+
+                  // Upload Contagens
+                  Expanded(
+                    child: _buildUploadCard(
+                      title: 'Validades (Contagens)',
+                      subtitle: 'Importa conciliação semanal de validades',
+                      icon: Icons.event_available,
+                      color: AppColors.success,
+                      uploadType: 'contagens',
+                      columns: [
+                        'Código Item',
+                        'Validade Aferida',
+                        'Quantidade Cx',
+                        'Quantidade Unidade',
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             
             // Arquivo selecionado
