@@ -12,7 +12,6 @@ from .models import (
     UsuarioUnidade,
     ConfiguracaoAlerta,
     SKU,
-    LoteValidade,
     MovimentacaoEstoque,
     LogConsulta,
     HistoricoUpload,
@@ -177,7 +176,7 @@ class LoginResponseSerializer(serializers.Serializer):
 # CONFIGURAÇÃO DE ALERTA
 # =============================================================================
 class ConfiguracaoAlertaSerializer(serializers.ModelSerializer):
-    """Serializer para ConfiguracaoAlerta com novos campos de dias."""
+    """Serializer para ConfiguracaoAlerta."""
     unidade = UnidadeNegocioResumoSerializer(read_only=True)
     unidade_id = serializers.PrimaryKeyRelatedField(
         queryset=UnidadeNegocio.objects.filter(ativo=True),
@@ -203,16 +202,21 @@ class ConfiguracaoAlertaSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
     
     def validate(self, attrs):
-        """Valida hierarquia dos dias: pre_bloqueio > bloqueado > extremamente_critico"""
-        dias_pre = attrs.get('dias_pre_bloqueio', 60)
-        dias_bloq = attrs.get('dias_bloqueado', 30)
-        dias_ext = attrs.get('dias_extremamente_critico', 7)
-        
-        # Se estamos atualizando, pegar valores existentes como fallback
-        if self.instance:
-            dias_pre = attrs.get('dias_pre_bloqueio', self.instance.dias_pre_bloqueio)
-            dias_bloq = attrs.get('dias_bloqueado', self.instance.dias_bloqueado)
-            dias_ext = attrs.get('dias_extremamente_critico', self.instance.dias_extremamente_critico)
+        """Valida hierarquia: dias_pre_bloqueio > dias_bloqueado > dias_extremamente_critico."""
+        # Para updates parciais, recupera os valores atuais como fallback
+        instance = self.instance
+        dias_pre = attrs.get(
+            'dias_pre_bloqueio',
+            instance.dias_pre_bloqueio if instance else 60
+        )
+        dias_bloq = attrs.get(
+            'dias_bloqueado',
+            instance.dias_bloqueado if instance else 30
+        )
+        dias_ext = attrs.get(
+            'dias_extremamente_critico',
+            instance.dias_extremamente_critico if instance else 7
+        )
         
         if dias_pre <= dias_bloq:
             raise serializers.ValidationError({
@@ -224,75 +228,15 @@ class ConfiguracaoAlertaSerializer(serializers.ModelSerializer):
             })
         
         return attrs
-    
-    def validate(self, attrs):
-        dias_critico = attrs.get('dias_para_critico', 30)
-        dias_pre_bloqueio = attrs.get('dias_para_pre_bloqueio', 45)
-        
-        if dias_pre_bloqueio <= dias_critico:
-            raise serializers.ValidationError({
-                'dias_para_pre_bloqueio': 
-                'Dias para pré-bloqueio deve ser maior que dias para crítico.'
-            })
-        return attrs
 
 
 # =============================================================================
-# LOTE / VALIDADE
-# =============================================================================
-class LoteValidadeSerializer(serializers.ModelSerializer):
-    """Serializer completo para LoteValidade."""
-    dias_ate_vencimento = serializers.ReadOnlyField()
-    esta_vencido = serializers.ReadOnlyField()
-    sku_codigo = serializers.CharField(source='sku.codigo_sku', read_only=True)
-    sku_nome = serializers.CharField(source='sku.nome_produto', read_only=True)
-    
-    class Meta:
-        model = LoteValidade
-        fields = [
-            'id',
-            'sku',
-            'sku_codigo',
-            'sku_nome',
-            'numero_lote',
-            'data_validade',
-            'data_fabricacao',
-            'qtd_estoque',
-            'estoque_display',
-            'localizacao',
-            'custo_unitario',
-            'fornecedor',
-            'dias_ate_vencimento',
-            'esta_vencido',
-            'ativo',
-            'created_at',
-            'updated_at',
-        ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
-
-
-class LoteValidadeResumoSerializer(serializers.ModelSerializer):
-    """Serializer resumido para uso em SKU."""
-    dias_ate_vencimento = serializers.ReadOnlyField()
-    
-    class Meta:
-        model = LoteValidade
-        fields = [
-            'id',
-            'numero_lote',
-            'data_validade',
-            'qtd_estoque',
-            'dias_ate_vencimento',
-        ]
-
-
-# =============================================================================
-# SKU - COM CAMPOS CALCULADOS DE STATUS
+# SKU - COM CAMPOS DE RANGE DE VALIDADE
 # =============================================================================
 class SKUSerializer(serializers.ModelSerializer):
     """
     Serializer completo para SKU.
-    Inclui campos calculados de status para o Frontend.
+    Inclui campos de range e status calculados para o Frontend.
     """
     unidade_negocio = UnidadeNegocioResumoSerializer(read_only=True)
     unidade_negocio_id = serializers.PrimaryKeyRelatedField(
@@ -300,11 +244,6 @@ class SKUSerializer(serializers.ModelSerializer):
         source='unidade_negocio',
         write_only=True
     )
-    
-    # Campos calculados
-    quantidade_total = serializers.SerializerMethodField()
-    quantidade_transito = serializers.SerializerMethodField()
-    lote_mais_proximo = LoteValidadeResumoSerializer(read_only=True)
     
     # Status calculados - VITAL PARA O FRONTEND
     status_texto = serializers.SerializerMethodField()
@@ -328,9 +267,11 @@ class SKUSerializer(serializers.ModelSerializer):
             'descricao',
             'imagem',
             'imagem_url',
-            'quantidade_total',
-            'quantidade_transito',
-            'lote_mais_proximo',
+            'qtd_total_020502',
+            'qtd_buffer_020304',
+            'qtd_disponivel_venda',
+            'validade_inicio_range',
+            'validade_fim_range',
             'status_texto',
             'status_cor',
             'status_dias_restantes',
@@ -340,35 +281,21 @@ class SKUSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
-    def get_quantidade_total(self, obj) -> int:
-        """Retorna soma de todos os lotes."""
-        return obj.quantidade_total_estoque
-    
-    def get_quantidade_transito(self, obj) -> int:
-        """Retorna quantidade em trânsito."""
-        return obj.quantidade_em_transito
-    
     def get_status_texto(self, obj) -> str:
-        """
-        Retorna o texto do status para exibição no Frontend.
-        Ex: 'Crítico', 'OK', 'Pré-Bloqueio'
-        """
+        """Retorna o texto do status para exibição no Frontend."""
         status_info = obj.get_status()
         status = status_info.get('status', 'SEM_ESTOQUE')
         return STATUS_LABELS.get(status, 'Indefinido')
     
     def get_status_cor(self, obj) -> str:
-        """
-        Retorna a cor hexadecimal do status para o Frontend.
-        O Flutter deve usar essa cor diretamente sem lógica adicional.
-        """
+        """Retorna a cor hexadecimal do status para o Frontend."""
         status_info = obj.get_status()
         status = status_info.get('status', 'SEM_ESTOQUE')
         return STATUS_CORES.get(status, '#9E9E9E')
     
     def get_status_dias_restantes(self, obj) -> int | None:
         """
-        Retorna quantidade de dias até o vencimento do lote mais próximo.
+        Retorna quantidade de dias até o vencimento.
         Valores negativos indicam produto vencido.
         """
         status_info = obj.get_status()
@@ -390,12 +317,11 @@ class SKUListSerializer(serializers.ModelSerializer):
     Menos campos, mais performático.
     """
     unidade_codigo = serializers.CharField(
-        source='unidade_negocio.codigo_unb', 
+        source='unidade_negocio.codigo_unb',
         read_only=True
     )
     status_texto = serializers.SerializerMethodField()
     status_cor = serializers.SerializerMethodField()
-    quantidade_total = serializers.SerializerMethodField()
     quantidade_unidade = serializers.SerializerMethodField()
     valor_estoque = serializers.SerializerMethodField()
     imagem_url = serializers.SerializerMethodField()
@@ -411,7 +337,7 @@ class SKUListSerializer(serializers.ModelSerializer):
             'unidade_medida',
             'status_texto',
             'status_cor',
-            'quantidade_total',
+            'qtd_total_020502',
             'quantidade_unidade',
             'valor_estoque',
             'imagem_url',
@@ -427,13 +353,9 @@ class SKUListSerializer(serializers.ModelSerializer):
         status = status_info.get('status', 'SEM_ESTOQUE')
         return STATUS_CORES.get(status, '#9E9E9E')
     
-    def get_quantidade_total(self, obj) -> int:
-        """Quantidade total em unidades base."""
-        return obj.quantidade_total_estoque
-    
     def get_quantidade_unidade(self, obj) -> int:
         """Quantidade na unidade de medida do SKU (ex: caixas)."""
-        total = obj.quantidade_total_estoque
+        total = obj.qtd_total_020502
         fator = obj.fator_conversao or 1
         return total // fator if fator > 0 else total
     
@@ -459,7 +381,6 @@ class SKUEstoqueSerializer(serializers.ModelSerializer):
     quantidade_estoque = serializers.SerializerMethodField()
     quantidade_transito = serializers.SerializerMethodField()
     quantidade_total = serializers.SerializerMethodField()
-    qtd_lotes = serializers.SerializerMethodField()
     imagem_url = serializers.SerializerMethodField()
     
     class Meta:
@@ -473,21 +394,17 @@ class SKUEstoqueSerializer(serializers.ModelSerializer):
             'quantidade_estoque',
             'quantidade_transito',
             'quantidade_total',
-            'qtd_lotes',
             'imagem_url',
         ]
     
     def get_quantidade_estoque(self, obj) -> int:
-        return obj.quantidade_total_estoque
+        return obj.qtd_total_020502
     
     def get_quantidade_transito(self, obj) -> int:
         return obj.quantidade_em_transito
     
     def get_quantidade_total(self, obj) -> int:
-        return obj.quantidade_total_estoque + obj.quantidade_em_transito
-    
-    def get_qtd_lotes(self, obj) -> int:
-        return obj.lotes.filter(ativo=True, qtd_estoque__gt=0).count()
+        return obj.qtd_total_020502 + obj.quantidade_em_transito
     
     def get_imagem_url(self, obj) -> str | None:
         if obj.imagem:
@@ -504,10 +421,9 @@ class SKUCriticidadeSerializer(serializers.ModelSerializer):
     Usado nas abas Bloqueados e Pré-Bloqueio.
     """
     unidade_codigo = serializers.CharField(
-        source='unidade_negocio.codigo_unb', 
+        source='unidade_negocio.codigo_unb',
         read_only=True
     )
-    lote_critico = serializers.SerializerMethodField()
     data_validade = serializers.SerializerMethodField()
     dias_restantes = serializers.SerializerMethodField()
     quantidade = serializers.SerializerMethodField()
@@ -522,7 +438,6 @@ class SKUCriticidadeSerializer(serializers.ModelSerializer):
             'codigo_sku',
             'nome_produto',
             'unidade_codigo',
-            'lote_critico',
             'data_validade',
             'dias_restantes',
             'quantidade',
@@ -531,21 +446,15 @@ class SKUCriticidadeSerializer(serializers.ModelSerializer):
             'imagem_url',
         ]
     
-    def get_lote_critico(self, obj) -> str | None:
-        lote = obj.lote_mais_proximo
-        return lote.numero_lote if lote else None
-    
     def get_data_validade(self, obj) -> str | None:
-        lote = obj.lote_mais_proximo
-        return lote.data_validade.isoformat() if lote else None
+        return obj.validade_inicio_range.isoformat() if obj.validade_inicio_range else None
     
     def get_dias_restantes(self, obj) -> int | None:
         status_info = obj.get_status()
         return status_info.get('dias_restantes')
     
     def get_quantidade(self, obj) -> int:
-        lote = obj.lote_mais_proximo
-        return lote.qtd_estoque if lote else 0
+        return obj.qtd_disponivel_venda
     
     def get_status_texto(self, obj) -> str:
         status_info = obj.get_status()
@@ -573,17 +482,16 @@ class MovimentacaoEstoqueSerializer(serializers.ModelSerializer):
     """Serializer para MovimentacaoEstoque."""
     sku_codigo = serializers.CharField(source='sku.codigo_sku', read_only=True)
     sku_nome = serializers.CharField(source='sku.nome_produto', read_only=True)
-    lote_numero = serializers.CharField(source='lote.numero_lote', read_only=True)
     unidade_origem_nome = serializers.CharField(
-        source='unidade_origem.nome', 
+        source='unidade_origem.nome',
         read_only=True
     )
     unidade_destino_nome = serializers.CharField(
-        source='unidade_destino.nome', 
+        source='unidade_destino.nome',
         read_only=True
     )
     usuario_nome = serializers.CharField(
-        source='usuario.get_full_name', 
+        source='usuario.get_full_name',
         read_only=True
     )
     
@@ -594,8 +502,6 @@ class MovimentacaoEstoqueSerializer(serializers.ModelSerializer):
             'sku',
             'sku_codigo',
             'sku_nome',
-            'lote',
-            'lote_numero',
             'tipo',
             'status',
             'quantidade',
@@ -621,7 +527,7 @@ class MovimentacaoEstoqueSerializer(serializers.ModelSerializer):
 class LogConsultaSerializer(serializers.ModelSerializer):
     """Serializer para LogConsulta (somente leitura)."""
     usuario_nome = serializers.CharField(
-        source='usuario.get_full_name', 
+        source='usuario.get_full_name',
         read_only=True
     )
     
@@ -645,13 +551,11 @@ class LogConsultaSerializer(serializers.ModelSerializer):
 class NotificacaoAlertaSerializer(serializers.Serializer):
     """
     Serializer para notificações de alerta de validade.
-    Retorna lotes em estado de alerta (Pré-Bloqueio, Bloqueado, Extremamente Crítico).
+    Baseado diretamente nos campos do SKU (sem LoteValidade).
     """
-    id = serializers.IntegerField(source='lote_id')
     sku_id = serializers.IntegerField()
     sku_codigo = serializers.CharField()
     sku_nome = serializers.CharField()
-    numero_lote = serializers.CharField()
     data_validade = serializers.DateField()
     dias_restantes = serializers.IntegerField()
     qtd_estoque = serializers.IntegerField()

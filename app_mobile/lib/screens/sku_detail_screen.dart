@@ -4,7 +4,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../models/sku_model.dart';
 import '../services/auth_service.dart';
-import '../services/sku_service.dart';
 import '../utils/constants.dart';
 import 'login_screen.dart';
 
@@ -20,71 +19,17 @@ class SkuDetailScreen extends StatefulWidget {
 class _SkuDetailScreenState extends State<SkuDetailScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  late SkuService _skuService;
-  
-  List<Lote> _lotes = [];
-  bool _isLoadingLotes = true;
-  String? _lotesError;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    
-    final authService = Provider.of<AuthService>(context, listen: false);
-    _skuService = SkuService(authService: authService);
-    
-    _loadLotes();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadLotes() async {
-    setState(() {
-      _isLoadingLotes = true;
-      _lotesError = null;
-    });
-
-    try {
-      final lotes = await _skuService.getLotesBySku(widget.sku.id);
-      // Ordena lotes por prioridade de status e data de validade
-      lotes.sort((a, b) {
-        final prioridadeA = _getPrioridadeStatus(a);
-        final prioridadeB = _getPrioridadeStatus(b);
-        
-        if (prioridadeA != prioridadeB) {
-          return prioridadeA.compareTo(prioridadeB);
-        }
-        // Mesmo status: ordena por data de validade (mais próxima primeiro)
-        return a.dataValidade.compareTo(b.dataValidade);
-      });
-      
-      setState(() {
-        _lotes = lotes;
-      });
-    } on AuthException catch (e) {
-      _handleAuthError(e.message);
-    } catch (e) {
-      setState(() {
-        _lotesError = e.toString().replaceFirst('Exception: ', '');
-      });
-    } finally {
-      setState(() {
-        _isLoadingLotes = false;
-      });
-    }
-  }
-
-  /// Retorna prioridade do status (menor = mais crítico)
-  int _getPrioridadeStatus(Lote lote) {
-    if (lote.estaVencido) return 0; // Vencido - maior prioridade
-    if (lote.diasAteVencimento <= 30) return 1; // Crítico
-    if (lote.diasAteVencimento <= 45) return 2; // Pré-Bloqueio
-    return 3; // Normal/OK
   }
 
   void _handleAuthError(String message) {
@@ -150,8 +95,8 @@ class _SkuDetailScreenState extends State<SkuDetailScreen>
             child: TabBarView(
               controller: _tabController,
               children: [
-                // Tab Lotes/Validades
-                _buildLotesTab(dateFormat),
+                // Nova Tab Estoque/Validade Gerencial
+                _buildValidadeEstoqueTab(sku),
 
                 // Tab Informações
                 _buildInfoTab(sku),
@@ -258,7 +203,9 @@ class _SkuDetailScreenState extends State<SkuDetailScreen>
       case 'vencido':
         return Icons.block;
       case 'crítico':
+      case 'extremamente crítico':
         return Icons.warning;
+      case 'bloqueado':
       case 'pré-bloqueio':
         return Icons.schedule;
       case 'ok':
@@ -301,23 +248,23 @@ class _SkuDetailScreenState extends State<SkuDetailScreen>
 
             const Divider(height: AppSpacing.lg),
 
-            // Grid de informações
+            // Grid de informações principais
             Row(
               children: [
                 Expanded(
                   child: _buildInfoTile(
                     Icons.inventory,
-                    'Em Estoque',
-                    '${sku.quantidadeTotal}',
+                    'Disp. Venda',
+                    '${sku.qtdDisponivelVenda}',
                     AppColors.success,
                   ),
                 ),
                 Expanded(
                   child: _buildInfoTile(
-                    Icons.local_shipping,
-                    'Em Trânsito',
-                    '${sku.quantidadeTransito}',
-                    AppColors.info,
+                    Icons.warning_amber_rounded,
+                    'Buffer',
+                    '${sku.qtdBuffer020304}',
+                    AppColors.error,
                   ),
                 ),
                 Expanded(
@@ -332,16 +279,6 @@ class _SkuDetailScreenState extends State<SkuDetailScreen>
                 ),
               ],
             ),
-
-            // Lote mais próximo
-            if (sku.loteMaisProximo != null) ...[
-              const Divider(height: AppSpacing.lg),
-              _buildInfoRow(
-                Icons.label,
-                'Lote Mais Próximo',
-                '${sku.loteMaisProximo!.numeroLote} (Val: ${dateFormat.format(sku.loteMaisProximo!.dataValidade)})',
-              ),
-            ],
           ],
         ),
       ),
@@ -415,210 +352,133 @@ class _SkuDetailScreenState extends State<SkuDetailScreen>
           fontSize: AppFontSizes.body,
         ),
         tabs: const [
-          Tab(text: 'Lotes/Validades', icon: Icon(Icons.layers)),
+          Tab(text: 'Estoque/Validade', icon: Icon(Icons.layers)),
           Tab(text: 'Informações', icon: Icon(Icons.info_outline)),
         ],
       ),
     );
   }
 
-  Widget _buildLotesTab(DateFormat dateFormat) {
-    if (_isLoadingLotes) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(color: AppColors.primary),
-            SizedBox(height: AppSpacing.md),
-            Text('Carregando lotes...'),
-          ],
-        ),
-      );
-    }
-
-    if (_lotesError != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, size: 48, color: AppColors.error),
-            const SizedBox(height: AppSpacing.md),
-            Text(_lotesError!),
-            const SizedBox(height: AppSpacing.md),
-            ElevatedButton(
-              onPressed: _loadLotes,
-              child: const Text('Tentar novamente'),
+  // --- NOVA ABA GERENCIAL (Substitui Lotes) ---
+  Widget _buildValidadeEstoqueTab(Sku sku) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Card de Range de Validade
+          Card(
+            color: AppColors.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              side: BorderSide(color: sku.statusColor.withAlpha(50), width: 1),
             ),
-          ],
-        ),
-      );
-    }
-
-    if (_lotes.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.inventory_2_outlined,
-              size: 48,
-              color: AppColors.textSecondary,
-            ),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              'Nenhum lote encontrado',
-              style: GoogleFonts.poppins(
-                fontSize: AppFontSizes.subtitle,
-                color: AppColors.textSecondary,
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              child: Column(
+                children: [
+                  Icon(Icons.calendar_month, color: sku.statusColor, size: 40),
+                  const SizedBox(height: AppSpacing.sm),
+                  Text(
+                    'Range de Validade',
+                    style: GoogleFonts.poppins(
+                      color: AppColors.textSecondary, 
+                      fontSize: AppFontSizes.body,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    sku.getRangeValidadeFormatado(),
+                    style: GoogleFonts.poppins(
+                      color: AppColors.textPrimary, 
+                      fontSize: AppFontSizes.subtitle, 
+                      fontWeight: FontWeight.bold
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: _loadLotes,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        itemCount: _lotes.length,
-        itemBuilder: (context, index) {
-          return _buildLoteCard(_lotes[index], dateFormat);
-        },
+          ),
+          
+          const SizedBox(height: AppSpacing.md),
+          
+          // Card de Composição do Estoque
+          Card(
+            color: AppColors.surface,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Composição do Estoque',
+                    style: GoogleFonts.poppins(
+                      color: AppColors.textPrimary, 
+                      fontSize: AppFontSizes.subtitle, 
+                      fontWeight: FontWeight.w600
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                    child: Divider(),
+                  ),
+                  
+                  // Físico Total (020502)
+                  _buildEstoqueRow(
+                    'Estoque Físico Total (020502)', 
+                    sku.qtdTotal020502.toString(), 
+                    AppColors.info
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  
+                  // Buffer/Reservado (020304)
+                  _buildEstoqueRow(
+                    'Retido em Pedidos (020304)', 
+                    '- ${sku.qtdBuffer020304}', 
+                    AppColors.error
+                  ),
+                  
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                    child: Divider(),
+                  ),
+                  
+                  // Disponível para Venda
+                  _buildEstoqueRow(
+                    'Disponível para Venda', 
+                    sku.qtdDisponivelVenda.toString(), 
+                    AppColors.success,
+                    isBold: true,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildLoteCard(Lote lote, DateFormat dateFormat) {
-    final isVencido = lote.estaVencido;
-    final isCritico = lote.diasAteVencimento <= 30 && !isVencido;
-    
-    Color statusColor;
-    if (isVencido) {
-      statusColor = Colors.black;
-    } else if (isCritico) {
-      statusColor = AppColors.error;
-    } else if (lote.diasAteVencimento <= 45) {
-      statusColor = AppColors.warning;
-    } else {
-      statusColor = AppColors.success;
-    }
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        side: BorderSide(
-          color: statusColor.withAlpha(100),
-          width: 1,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.sm),
-                  decoration: BoxDecoration(
-                    color: statusColor.withAlpha(26),
-                    borderRadius: BorderRadius.circular(AppRadius.sm),
-                  ),
-                  child: Icon(Icons.label, color: statusColor, size: 20),
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: Text(
-                    'Lote: ${lote.numeroLote}',
-                    style: GoogleFonts.poppins(
-                      fontSize: AppFontSizes.subtitle,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.sm,
-                    vertical: AppSpacing.xs,
-                  ),
-                  decoration: BoxDecoration(
-                    color: statusColor,
-                    borderRadius: BorderRadius.circular(AppRadius.sm),
-                  ),
-                  child: Text(
-                    isVencido
-                        ? 'Vencido'
-                        : '${lote.diasAteVencimento} dias',
-                    style: GoogleFonts.poppins(
-                      fontSize: AppFontSizes.caption,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: AppSpacing.sm),
-            const Divider(),
-
-            // Info Grid
-            Row(
-              children: [
-                Expanded(
-                  child: _buildLoteInfo(
-                    'Validade',
-                    dateFormat.format(lote.dataValidade),
-                    Icons.event,
-                  ),
-                ),
-                Expanded(
-                  child: _buildLoteInfo(
-                    'Quantidade',
-                    '${lote.qtdEstoque}',
-                    Icons.inventory,
-                  ),
-                ),
-              ],
-            ),
-
-            if (lote.localizacao != null) ...[
-              const SizedBox(height: AppSpacing.sm),
-              _buildLoteInfo(
-                'Localização',
-                lote.localizacao!,
-                Icons.location_on,
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLoteInfo(String label, String value, IconData icon) {
+  Widget _buildEstoqueRow(String label, String value, Color valueColor, {bool isBold = false}) {
     return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Icon(icon, size: 16, color: AppColors.textSecondary),
-        const SizedBox(width: 4),
         Text(
-          '$label: ',
+          label, 
           style: GoogleFonts.poppins(
-            fontSize: AppFontSizes.caption,
-            color: AppColors.textSecondary,
-          ),
+            color: AppColors.textSecondary, 
+            fontSize: AppFontSizes.body
+          )
         ),
         Text(
-          value,
+          value, 
           style: GoogleFonts.poppins(
-            fontSize: AppFontSizes.body,
-            fontWeight: FontWeight.w500,
-            color: AppColors.textPrimary,
-          ),
+            color: valueColor, 
+            fontSize: isBold ? AppFontSizes.title : AppFontSizes.body, 
+            fontWeight: isBold ? FontWeight.bold : FontWeight.w600
+          )
         ),
       ],
     );

@@ -242,42 +242,6 @@ class SkuService {
     }
   }
 
-  /// Busca lotes de um SKU específico
-  Future<List<Lote>> getLotesBySku(int skuId) async {
-    try {
-      // Monta URL com unidade_id obrigatório
-      final queryParams = <String, String>{};
-      final unidadeId = authService.unidadeAtiva?.id;
-      if (unidadeId != null) {
-        queryParams['unidade_id'] = unidadeId.toString();
-      }
-      
-      final uri = Uri.parse('${Constants.apiUrl}skus/$skuId/lotes/')
-          .replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
-      
-      debugPrint('SkuService.getLotesBySku: $uri');
-      
-      final response = await http.get(uri, headers: _headers);
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        
-        if (data is List) {
-          return data.map((json) => Lote.fromJson(json)).toList();
-        }
-        
-        return [];
-      } else if (response.statusCode == 401) {
-        throw AuthException('Sessão expirada. Faça login novamente.');
-      } else {
-        throw Exception('Erro ao buscar lotes');
-      }
-    } catch (e) {
-      debugPrint('Erro em getLotesBySku: $e');
-      rethrow;
-    }
-  }
-
   /// Consulta de validade - busca otimizada para a tela de consulta
   Future<List<Sku>> consultaValidade({
     required String search,

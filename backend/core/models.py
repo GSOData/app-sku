@@ -353,6 +353,34 @@ class SKU(BaseModel):
         help_text='Foto do produto para exibição no app'
     )
 
+    qtd_total_020502 = models.IntegerField(
+        'Estoque Total (020502)',
+        default=0,
+        help_text='Estoque físico real total convertido em unidades base'
+    )
+    qtd_buffer_020304 = models.IntegerField(
+        'Buffer em Pedidos (020304)',
+        default=0,
+        help_text='Estoque retido em pedidos de saída'
+    )
+    qtd_disponivel_venda = models.IntegerField(
+        'Disponível para Venda',
+        default=0,
+        help_text='Calculado: total - buffer'
+    )
+    validade_inicio_range = models.DateField(
+        'Início do Range de Validade',
+        null=True,
+        blank=True,
+        help_text='Data de validade do produto mais antigo disponível (FEFO reverso)'
+    )
+    validade_fim_range = models.DateField(
+        'Fim do Range de Validade',
+        null=True,
+        blank=True,
+        help_text='Data de validade mais longa do estoque disponível'
+    )
+
     class Meta:
         verbose_name = 'SKU'
         verbose_name_plural = 'SKUs'
@@ -365,36 +393,6 @@ class SKU(BaseModel):
 
     def __str__(self):
         return f'{self.codigo_sku} - {self.nome_produto}'
-
-    @property
-    def lote_mais_proximo(self):
-        """
-        Retorna o lote com data de validade mais próxima (FEFO).
-        Considera apenas lotes ativos com estoque > 0.
-        Exclui o Lote BASE (cego, sem validade real).
-        """
-        return self.lotes.filter(
-            ativo=True,
-            qtd_estoque__gt=0
-        ).exclude(
-            numero_lote='BASE'
-        ).order_by('data_validade').first()
-
-    @property
-    def quantidade_total_estoque(self) -> int:
-        """
-        Retorna a soma dos lotes ativos.
-        Exclui o Lote BASE (estoque cego) para evitar duplicidade.
-        """
-        from django.db.models import Sum
-        total = self.lotes.filter(
-            ativo=True
-        ).exclude(
-            numero_lote='BASE'  # Ignora Lote BASE
-        ).aggregate(
-            total=Sum('qtd_estoque')
-        )['total']
-        return total or 0
 
     @property
     def quantidade_em_transito(self) -> int:
@@ -412,36 +410,19 @@ class SKU(BaseModel):
     @property
     def valor_total_estoque(self) -> float:
         """
-        Retorna o valor total do estoque baseado em qtd * custo_unitario de cada lote.
+        Calcula o valor com base na quantidade real. Custos devem ser avaliados de outra forma futuramente.
         """
-        from django.db.models import Sum, F
-        total = self.lotes.filter(ativo=True).aggregate(
-            total=Sum(F('qtd_estoque') * F('custo_unitario'))
-        )['total']
-        return float(total) if total else 0.0
+        return 0.0
 
     def get_status(self, config: 'ConfiguracaoAlerta' = None) -> dict:
         """
-        Calcula o status do SKU baseado no lote mais próximo do vencimento.
-        
-        Status (NOVAS REGRAS):
-        - VENCIDO: data_validade < hoje
-        - EXTREMAMENTE_CRITICO: dias_restantes <= dias_extremamente_critico (padrão: 7)
-        - BLOQUEADO: dias_restantes <= dias_bloqueado (padrão: 30)
-        - PRE_BLOQUEIO: dias_restantes <= dias_pre_bloqueio (padrão: 60)
-        - OK: acima de dias_pre_bloqueio
-        
-        Returns:
-            dict com 'status', 'cor', 'dias_restantes', 'lote'
+        Calcula o status do SKU baseado no field `validade_inicio_range` (A data mais curta, FEFO reverso).
         """
-        lote = self.lote_mais_proximo
-        
-        if not lote:
+        if not self.validade_inicio_range:
             return {
                 'status': 'SEM_ESTOQUE',
                 'cor': 'cinza',
                 'dias_restantes': None,
-                'lote': None
             }
 
         # Busca configuração específica da unidade ou global
@@ -463,144 +444,38 @@ class SKU(BaseModel):
         dias_extremamente_critico = config.dias_extremamente_critico if config else 7
         
         hoje = date.today()
-        dias_restantes = (lote.data_validade - hoje).days
+        dias_restantes = (self.validade_inicio_range - hoje).days
         
         if dias_restantes < 0:
             return {
                 'status': 'VENCIDO',
                 'cor': 'preto',
                 'dias_restantes': dias_restantes,
-                'lote': lote
             }
         elif dias_restantes <= dias_extremamente_critico:
             return {
                 'status': 'EXTREMAMENTE_CRITICO',
                 'cor': 'vermelho',
                 'dias_restantes': dias_restantes,
-                'lote': lote
             }
         elif dias_restantes <= dias_bloqueado:
             return {
                 'status': 'BLOQUEADO',
                 'cor': 'laranja',
                 'dias_restantes': dias_restantes,
-                'lote': lote
             }
         elif dias_restantes <= dias_pre_bloqueio:
             return {
                 'status': 'PRE_BLOQUEIO',
                 'cor': 'amarelo',
                 'dias_restantes': dias_restantes,
-                'lote': lote
             }
         else:
             return {
                 'status': 'OK',
                 'cor': 'verde',
                 'dias_restantes': dias_restantes,
-                'lote': lote
             }
-
-
-class LoteValidade(BaseModel):
-    """
-    Representa um lote de um SKU com controle de validade.
-    Segue a lógica FEFO (First Expired, First Out).
-    
-    data_validade pode ser None para estoque base sem validade definida.
-    """
-    sku = models.ForeignKey(
-        SKU,
-        on_delete=models.CASCADE,
-        related_name='lotes',
-        verbose_name='SKU'
-    )
-    numero_lote = models.CharField(
-        'Número do Lote',
-        max_length=50,
-        db_index=True
-    )
-    data_validade = models.DateField(
-        'Data de Validade',
-        db_index=True,
-        null=True,
-        blank=True,
-        help_text='Pode ser nulo para estoque base sem validade definida'
-    )
-    data_fabricacao = models.DateField(
-        'Data de Fabricação',
-        null=True,
-        blank=True
-    )
-    qtd_estoque = models.PositiveIntegerField(
-        'Quantidade em Estoque',
-        default=0,
-        validators=[MinValueValidator(0)]
-    )
-    estoque_display = models.CharField(
-        'Estoque Original (Display)',
-        max_length=50,
-        blank=True,
-        null=True,
-        help_text='Texto original da planilha ex: 388/06'
-    )
-    localizacao = models.CharField(
-        'Localização',
-        max_length=50,
-        blank=True,
-        null=True,
-        help_text='Posição física no estoque (ex: A1-P2-N3)'
-    )
-    custo_unitario = models.DecimalField(
-        'Custo Unitário',
-        max_digits=12,
-        decimal_places=2,
-        null=True,
-        blank=True
-    )
-    fornecedor = models.CharField(
-        'Fornecedor',
-        max_length=150,
-        blank=True,
-        null=True
-    )
-
-    class Meta:
-        verbose_name = 'Lote/Validade'
-        verbose_name_plural = 'Lotes/Validades'
-        ordering = ['data_validade']
-        unique_together = ['sku', 'numero_lote']
-        indexes = [
-            models.Index(fields=['data_validade']),
-            models.Index(fields=['sku', 'data_validade']),
-            models.Index(fields=['numero_lote']),
-        ]
-
-    def __str__(self):
-        val_str = self.data_validade.strftime('%d/%m/%Y') if self.data_validade else 'Sem validade'
-        return f'{self.sku.codigo_sku} - Lote {self.numero_lote} (Val: {val_str})'
-
-    @property
-    def dias_ate_vencimento(self):
-        """
-        Retorna quantidade de dias até o vencimento.
-        Valores negativos indicam produto vencido.
-        Retorna None se não houver data de validade.
-        """
-        if self.data_validade is None:
-            return None
-        return (self.data_validade - date.today()).days
-
-    @property
-    def esta_vencido(self) -> bool:
-        """
-        Verifica se o lote está vencido.
-        Retorna False se não houver data de validade.
-        """
-        if self.data_validade is None:
-            return False
-        return self.data_validade < date.today()
-
 
 class MovimentacaoEstoque(BaseModel):
     """
@@ -624,15 +499,6 @@ class MovimentacaoEstoque(BaseModel):
         on_delete=models.PROTECT,
         related_name='movimentacoes',
         verbose_name='SKU'
-    )
-    lote = models.ForeignKey(
-        LoteValidade,
-        on_delete=models.PROTECT,
-        related_name='movimentacoes',
-        verbose_name='Lote',
-        null=True,
-        blank=True,
-        help_text='Lote específico (obrigatório para saída)'
     )
     tipo = models.CharField(
         'Tipo',
@@ -706,6 +572,7 @@ class HistoricoUpload(BaseModel):
     TIPO_ARQUIVO_CHOICES = [
         ('GRADE', 'Grade 020502'),
         ('CONTAGEM', 'Contagem'),
+        ('FEFO', 'Estoque FEFO (3 Arquivos)'),
     ]
     
     STATUS_CHOICES = [

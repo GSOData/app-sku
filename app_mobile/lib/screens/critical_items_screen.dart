@@ -487,7 +487,7 @@ class _CriticalItemsScreenState extends State<CriticalItemsScreen> {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              'Qtd em estoque: ${sku.quantidadeTotal}',
+                              'Qtd em estoque: ${sku.qtdDisponivelVenda}',
                               style: GoogleFonts.poppins(
                                 fontSize: AppFontSizes.caption,
                                 color: AppColors.textSecondary,

@@ -6,7 +6,6 @@ Estrutura:
 - /api/unidades/      -> CRUD Unidades de Negócio
 - /api/usuarios/      -> CRUD Usuários (RBAC: GERENTE+)
 - /api/skus/          -> CRUD SKUs + Consulta Validade
-- /api/lotes/         -> CRUD Lotes
 - /api/estoque/       -> Estoque Inicial (read-only)
 - /api/criticidade/   -> Relatório de Criticidade
 - /api/movimentacoes/ -> Movimentações de Estoque
@@ -27,7 +26,6 @@ from .views import (
     UnidadeNegocioViewSet,
     UsuarioViewSet,
     SKUViewSet,
-    LoteValidadeViewSet,
     EstoqueViewSet,
     ConfiguracaoAlertaViewSet,
     MovimentacaoEstoqueViewSet,
@@ -36,7 +34,6 @@ from .views import (
     # APIViews
     RelatorioCriticidadeView,
     UploadEstoqueView,
-    UploadContagensView,
     NotificacoesAlertaView,
 )
 
@@ -47,7 +44,6 @@ router = DefaultRouter()
 router.register(r'unidades', UnidadeNegocioViewSet, basename='unidades')
 router.register(r'usuarios', UsuarioViewSet, basename='usuarios')
 router.register(r'skus', SKUViewSet, basename='skus')
-router.register(r'lotes', LoteValidadeViewSet, basename='lotes')
 router.register(r'estoque', EstoqueViewSet, basename='estoque')
 router.register(r'configuracoes', ConfiguracaoAlertaViewSet, basename='configuracoes')
 router.register(r'movimentacoes', MovimentacaoEstoqueViewSet, basename='movimentacoes')
@@ -65,17 +61,16 @@ auth_urls = [
 urlpatterns = [
     # Auth
     path('auth/', include((auth_urls, 'auth'))),
-    
+
     # Relatório de Criticidade (endpoint customizado)
     path('relatorio-criticidade/', RelatorioCriticidadeView.as_view(), name='relatorio-criticidade'),
-    
+
     # Notificações de Alerta de Validade
     path('notificacoes/', NotificacoesAlertaView.as_view(), name='notificacoes'),
-    
+
     # Upload de arquivos
     path('upload/grade-020502/', UploadEstoqueView.as_view(), name='upload-grade'),
-    path('upload/contagens/', UploadContagensView.as_view(), name='upload-contagens'),
-    
+
     # ViewSets (router)
     path('', include(router.urls)),
 ]

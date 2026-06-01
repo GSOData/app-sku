@@ -11,11 +11,10 @@ import '../../services/upload_service.dart' hide UnidadeNegocio;
 import '../../services/sku_service.dart' hide AuthException;
 import '../login_screen.dart';
 
-/// Tela de Upload de Arquivos (Web)
-/// 
-/// Permite importar dois tipos de planilhas:
-/// 1. Grade 020502: Estoque Total Diário
-/// 2. Contagens: Conciliação de Validades
+/// Tela de Upload de Arquivos (Web) — Processamento FEFO Reverso.
+///
+/// Recebe 3 planilhas simultâneas (020502, 020304, NRI) e envia para
+/// o endpoint unificado POST /api/upload/grade-020502/.
 class WebUploadScreen extends StatefulWidget {
   const WebUploadScreen({super.key});
 
@@ -26,23 +25,27 @@ class WebUploadScreen extends StatefulWidget {
 class _WebUploadScreenState extends State<WebUploadScreen> {
   late UploadService _uploadService;
   late SkuService _skuService;
-  
-  // Estados
+
+  // Estados globais
   bool _isLoadingUnidades = true;
   bool _isUploading = false;
   bool _isLoadingHistory = false;
-  String? _uploadType; // 'grade' ou 'contagens'
-  
-  // Unidades de Negócio
+
+  // Unidades
   List<UnidadeNegocio> _unidades = [];
   UnidadeNegocio? _selectedUnidade;
-  
-  // Arquivo selecionado
-  String? _selectedFileName;
-  Uint8List? _selectedFileBytes;
-  
-  // Histórico de uploads (da API)
+
+  // Arquivos selecionados — null = ainda não selecionado
+  ArquivoUpload? _arquivo020502;
+  ArquivoUpload? _arquivo020304;
+  ArquivoUpload? _arquivoNri;
+
+  // Histórico
   List<HistoricoUpload> _uploadHistory = [];
+
+  // -----------------------------------------------------------------------
+  // Inicialização
+  // -----------------------------------------------------------------------
 
   @override
   void initState() {
@@ -56,7 +59,6 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
 
   Future<void> _loadUnidades() async {
     setState(() => _isLoadingUnidades = true);
-    
     try {
       final unidades = await _uploadService.getUnidades();
       setState(() {
@@ -65,15 +67,12 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
       });
     } catch (e) {
       setState(() => _isLoadingUnidades = false);
-      if (mounted) {
-        _showError('Erro ao carregar unidades: $e');
-      }
+      if (mounted) _showError('Erro ao carregar unidades: $e');
     }
   }
 
   Future<void> _loadUploadHistory() async {
     setState(() => _isLoadingHistory = true);
-    
     try {
       final result = await _skuService.getHistoricoUpload();
       setState(() {
@@ -85,6 +84,10 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
       debugPrint('Erro ao carregar histórico: $e');
     }
   }
+
+  // -----------------------------------------------------------------------
+  // Build principal
+  // -----------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -108,29 +111,22 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Seleção de Unidade (Obrigatório)
           _buildUnidadeSelector(),
-          
           const SizedBox(height: AppSpacing.xl),
-          
-          // Área de Upload com dois tipos
-          _buildUploadSection(),
-
+          _buildFefoUploadSection(),
           const SizedBox(height: AppSpacing.xl),
-
-          // Instruções
           _buildInstructions(),
-
           const SizedBox(height: AppSpacing.xl),
-
-          // Histórico de Uploads
           _buildUploadHistory(),
         ],
       ),
     );
   }
 
-  /// Dropdown de seleção de Unidade de Negócio
+  // -----------------------------------------------------------------------
+  // Seleção de unidade (sem alterações em relação ao original)
+  // -----------------------------------------------------------------------
+
   Widget _buildUnidadeSelector() {
     return Card(
       elevation: 0,
@@ -185,7 +181,6 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
               ),
             ),
             const SizedBox(height: AppSpacing.md),
-            
             if (_isLoadingUnidades)
               const Center(child: CircularProgressIndicator())
             else
@@ -202,15 +197,13 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
                     vertical: AppSpacing.md,
                   ),
                 ),
-                items: _unidades.map((unidade) {
+                items: _unidades.map((u) {
                   return DropdownMenuItem<UnidadeNegocio>(
-                    value: unidade,
-                    child: Text('${unidade.codigoUnb} - ${unidade.nome}'),
+                    value: u,
+                    child: Text('${u.codigoUnb} - ${u.nome}'),
                   );
                 }).toList(),
-                onChanged: (value) {
-                  setState(() => _selectedUnidade = value);
-                },
+                onChanged: (value) => setState(() => _selectedUnidade = value),
               ),
           ],
         ),
@@ -218,8 +211,21 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
     );
   }
 
-  /// Seção de Upload com dois tipos
-  Widget _buildUploadSection() {
+  // -----------------------------------------------------------------------
+  // Formulário FEFO com 3 seletores + botão de processar
+  // -----------------------------------------------------------------------
+
+  Widget _buildFefoUploadSection() {
+    final bool todosArquivosSelecionados =
+        _arquivo020502 != null &&
+        _arquivo020304 != null &&
+        _arquivoNri != null;
+
+    final bool podeProcesar =
+        _selectedUnidade != null &&
+        todosArquivosSelecionados &&
+        !_isUploading;
+
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -231,129 +237,32 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Importar Dados',
-              style: GoogleFonts.poppins(
-                fontSize: AppFontSizes.subtitle,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            
-            // Dois cards de upload lado a lado
-            IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Upload Grade 020502
-                  Expanded(
-                    child: _buildUploadCard(
-                      title: 'Estoque Total (020502)',
-                      subtitle: 'Importa grade diária de inventário',
-                      icon: Icons.inventory_2_outlined,
-                      color: AppColors.primary,
-                      uploadType: 'grade',
-                      columns: [
-                        'Produto (Código SKU)',
-                        'Descricao',
-                        'Unidade (cx, un, etc)',
-                        'Fator (conversão)',
-                        'Inventario (texto)',
-                        'Qtd Contagem',
-                      ],
-                    ),
+            // Cabeçalho
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(AppSpacing.sm),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withAlpha(26),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
                   ),
-
-                  const SizedBox(width: AppSpacing.lg),
-
-                  // Upload Contagens
-                  Expanded(
-                    child: _buildUploadCard(
-                      title: 'Validades (Contagens)',
-                      subtitle: 'Importa conciliação semanal de validades',
-                      icon: Icons.event_available,
-                      color: AppColors.success,
-                      uploadType: 'contagens',
-                      columns: [
-                        'Código Item',
-                        'Validade Aferida',
-                        'Quantidade Cx',
-                        'Quantidade Unidade',
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            
-            // Arquivo selecionado
-            if (_selectedFileName != null && !_isUploading) ...[
-              const SizedBox(height: AppSpacing.lg),
-              _buildSelectedFile(),
-            ],
-            
-            // Progress de upload
-            if (_isUploading) ...[
-              const SizedBox(height: AppSpacing.lg),
-              _buildUploadProgress(),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Card individual de upload
-  Widget _buildUploadCard({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required Color color,
-    required String uploadType,
-    required List<String> columns,
-  }) {
-    final isSelected = _uploadType == uploadType && _selectedFileName != null;
-    final rowBottomSpacing = uploadType == 'contagens' ? 6.0 : 2.0;
-    
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: isSelected ? color.withAlpha(13) : AppColors.background,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(
-          color: isSelected ? color : AppColors.divider,
-          width: isSelected ? 2 : 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.sm),
-                decoration: BoxDecoration(
-                  color: color.withAlpha(26),
-                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                  child: Icon(Icons.auto_awesome,
+                      color: AppColors.primary, size: 22),
                 ),
-                child: Icon(icon, color: color, size: 24),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
+                const SizedBox(width: AppSpacing.md),
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      title,
+                      'Processamento FEFO',
                       style: GoogleFonts.poppins(
-                        fontSize: AppFontSizes.body,
+                        fontSize: AppFontSizes.subtitle,
                         fontWeight: FontWeight.w600,
                         color: AppColors.textPrimary,
                       ),
                     ),
                     Text(
-                      subtitle,
+                      'Selecione as 3 planilhas para calcular o estoque gerencial',
                       style: GoogleFonts.poppins(
                         fontSize: AppFontSizes.caption,
                         color: AppColors.textSecondary,
@@ -361,149 +270,247 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
-          
-          const SizedBox(height: AppSpacing.md),
-          
-          // Colunas esperadas
-          Text(
-            'Colunas esperadas:',
-            style: GoogleFonts.poppins(
-              fontSize: AppFontSizes.caption,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          ...columns.map((col) => Padding(
-            padding: EdgeInsets.only(bottom: rowBottomSpacing),
-            child: Row(
-              children: [
-                Icon(Icons.check_circle, size: 12, color: color),
-                const SizedBox(width: AppSpacing.xs),
-                Expanded(
-                  child: Text(
-                    col,
-                    style: GoogleFonts.poppins(
-                      fontSize: AppFontSizes.caption,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ),
               ],
             ),
-          )),
-          
-          const Spacer(),
 
-          const SizedBox(height: AppSpacing.md),
-          
-          // Botão de selecionar arquivo
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _selectedUnidade == null || _isUploading
-                  ? null
-                  : () => _selectFile(uploadType),
-              icon: const Icon(Icons.upload_file, size: 18),
-              label: const Text('Selecionar Arquivo'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: color,
-                foregroundColor: Colors.white,
-                disabledBackgroundColor: AppColors.divider,
-                padding: const EdgeInsets.symmetric(
-                  vertical: AppSpacing.md,
-                ),
-              ),
+            const SizedBox(height: AppSpacing.xl),
+
+            // Linha de progresso — indica quantos arquivos foram selecionados
+            _buildProgressIndicator(),
+
+            const SizedBox(height: AppSpacing.xl),
+
+            // 3 seletores de arquivo
+            _buildFilePicker(
+              label: 'Grade 020502',
+              sublabel: 'Estoque Total Diário',
+              icon: Icons.inventory_2_outlined,
+              color: AppColors.primary,
+              arquivo: _arquivo020502,
+              onSelect: () => _selectFile('020502'),
+              onClear: () => setState(() => _arquivo020502 = null),
             ),
-          ),
-          
-          if (_selectedUnidade == null)
-            Padding(
-              padding: const EdgeInsets.only(top: AppSpacing.sm),
-              child: Text(
-                'Selecione uma unidade primeiro',
-                style: GoogleFonts.poppins(
-                  fontSize: AppFontSizes.caption,
-                  color: AppColors.warning,
-                ),
-                textAlign: TextAlign.center,
-              ),
+
+            const SizedBox(height: AppSpacing.md),
+
+            _buildFilePicker(
+              label: 'Grade 020304',
+              sublabel: 'Buffer de Segurança',
+              icon: Icons.safety_check_outlined,
+              color: AppColors.info,
+              arquivo: _arquivo020304,
+              onSelect: () => _selectFile('020304'),
+              onClear: () => setState(() => _arquivo020304 = null),
             ),
-        ],
+
+            const SizedBox(height: AppSpacing.md),
+
+            _buildFilePicker(
+              label: 'Planilha NRI',
+              sublabel: 'Não-Regular de Inventário',
+              icon: Icons.description_outlined,
+              color: AppColors.warning,
+              arquivo: _arquivoNri,
+              onSelect: () => _selectFile('nri'),
+              onClear: () => setState(() => _arquivoNri = null),
+            ),
+
+            const SizedBox(height: AppSpacing.xl),
+
+            // Estado de carregamento OU botão principal
+            if (_isUploading)
+              _buildUploadProgress()
+            else
+              _buildProcessarButton(
+                enabled: podeProcesar,
+                allSelected: todosArquivosSelecionados,
+              ),
+          ],
+        ),
       ),
     );
   }
 
-  /// Widget do arquivo selecionado
-  Widget _buildSelectedFile() {
-    final color = _uploadType == 'grade' ? AppColors.primary : AppColors.success;
-    final typeLabel = _uploadType == 'grade' 
-        ? 'Estoque Total (020502)' 
-        : 'Validades (Contagens)';
-    
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
+  /// Barra de progresso visual (0/3, 1/3, 2/3, 3/3 arquivos).
+  Widget _buildProgressIndicator() {
+    final count = [_arquivo020502, _arquivo020304, _arquivoNri]
+        .where((a) => a != null)
+        .length;
+
+    return Row(
+      children: List.generate(3, (i) {
+        final filled = i < count;
+        return Expanded(
+          child: Container(
+            margin: EdgeInsets.only(right: i < 2 ? AppSpacing.xs : 0),
+            height: 4,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(2),
+              color: filled
+                  ? AppColors.primary
+                  : AppColors.divider.withAlpha(128),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  /// Linha individual de seleção de arquivo.
+  Widget _buildFilePicker({
+    required String label,
+    required String sublabel,
+    required IconData icon,
+    required Color color,
+    required ArquivoUpload? arquivo,
+    required VoidCallback onSelect,
+    required VoidCallback onClear,
+  }) {
+    final bool selecionado = arquivo != null;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.md,
+      ),
       decoration: BoxDecoration(
-        color: color.withAlpha(13),
+        color: selecionado ? color.withAlpha(13) : AppColors.background,
         borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: color.withAlpha(77)),
+        border: Border.all(
+          color: selecionado ? color.withAlpha(128) : AppColors.divider,
+          width: selecionado ? 1.5 : 1,
+        ),
       ),
       child: Row(
         children: [
+          // Ícone do tipo de arquivo
           Container(
             padding: const EdgeInsets.all(AppSpacing.sm),
             decoration: BoxDecoration(
               color: color.withAlpha(26),
               borderRadius: BorderRadius.circular(AppRadius.sm),
             ),
-            child: Icon(Icons.description, color: color, size: 24),
+            child: Icon(
+              selecionado ? Icons.check_circle : icon,
+              color: color,
+              size: 22,
+            ),
           ),
+
           const SizedBox(width: AppSpacing.md),
+
+          // Nome e status
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _selectedFileName!,
+                  label,
                   style: GoogleFonts.poppins(
+                    fontSize: AppFontSizes.body,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textPrimary,
                   ),
                 ),
                 Text(
-                  '$typeLabel • ${_selectedUnidade?.nome ?? ""}',
+                  selecionado ? arquivo.nome : sublabel,
                   style: GoogleFonts.poppins(
                     fontSize: AppFontSizes.caption,
-                    color: color,
+                    color: selecionado ? color : AppColors.textSecondary,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.close),
-            onPressed: _clearSelection,
-            color: AppColors.textSecondary,
-          ),
+
           const SizedBox(width: AppSpacing.sm),
-          ElevatedButton(
-            onPressed: _performUpload,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: color,
-              foregroundColor: Colors.white,
+
+          // Botão de ação: limpar se selecionado, selecionar se não
+          if (selecionado)
+            IconButton(
+              icon: const Icon(Icons.close, size: 18),
+              onPressed: _isUploading ? null : onClear,
+              color: AppColors.textSecondary,
+              tooltip: 'Remover arquivo',
+            )
+          else
+            TextButton.icon(
+              onPressed: _selectedUnidade == null || _isUploading
+                  ? null
+                  : onSelect,
+              icon: const Icon(Icons.upload_file, size: 16),
+              label: const Text('Selecionar'),
+              style: TextButton.styleFrom(foregroundColor: color),
             ),
-            child: const Text('Enviar'),
-          ),
         ],
       ),
     );
   }
 
-  /// Progress de upload
+  /// Botão principal de processamento.
+  Widget _buildProcessarButton({
+    required bool enabled,
+    required bool allSelected,
+  }) {
+    // Mensagem de contexto abaixo do botão
+    String hint = '';
+    if (_selectedUnidade == null) {
+      hint = 'Selecione a unidade de negócio antes de continuar.';
+    } else if (!allSelected) {
+      final faltando = [
+        if (_arquivo020502 == null) '020502',
+        if (_arquivo020304 == null) '020304',
+        if (_arquivoNri == null) 'NRI',
+      ].join(', ');
+      hint = 'Ainda faltam: $faltando';
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ElevatedButton.icon(
+          onPressed: enabled ? _performUpload : null,
+          icon: const Icon(Icons.bolt, size: 20),
+          label: const Text(
+            'Processar Estoque FEFO',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+            disabledBackgroundColor: AppColors.divider,
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.md),
+            ),
+          ),
+        ),
+        if (hint.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            hint,
+            style: GoogleFonts.poppins(
+              fontSize: AppFontSizes.caption,
+              color: AppColors.warning,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Widget de progresso exibido durante o envio.
   Widget _buildUploadProgress() {
+    final nomes = [
+      _arquivo020502?.nome ?? '',
+      _arquivo020304?.nome ?? '',
+      _arquivoNri?.nome ?? '',
+    ].where((n) => n.isNotEmpty).join(' • ');
+
     return Container(
       padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
@@ -524,18 +531,20 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Processando arquivo...',
+                  'Processando estoque FEFO...',
                   style: GoogleFonts.poppins(
                     fontWeight: FontWeight.w600,
                     color: AppColors.textPrimary,
                   ),
                 ),
                 Text(
-                  _selectedFileName ?? '',
+                  nomes,
                   style: GoogleFonts.poppins(
                     fontSize: AppFontSizes.caption,
                     color: AppColors.textSecondary,
                   ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -545,7 +554,10 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
     );
   }
 
-  /// Instruções de upload
+  // -----------------------------------------------------------------------
+  // Instruções
+  // -----------------------------------------------------------------------
+
   Widget _buildInstructions() {
     return Card(
       elevation: 0,
@@ -573,63 +585,20 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
               ],
             ),
             const SizedBox(height: AppSpacing.md),
-            
-            Text(
-              '1. Selecione a Unidade de Negócio (filial) para onde os dados serão importados.',
-              style: GoogleFonts.poppins(
-                fontSize: AppFontSizes.body,
-                color: AppColors.textSecondary,
-              ),
+            _buildInstructionStep(
+              '1.',
+              'Selecione a Unidade de Negócio (filial) para onde os dados serão importados.',
             ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              '2. Escolha o tipo de importação:',
-              style: GoogleFonts.poppins(
-                fontSize: AppFontSizes.body,
-                color: AppColors.textSecondary,
-              ),
+            _buildInstructionStep(
+              '2.',
+              'Selecione as 3 planilhas obrigatórias: Grade 020502, Grade 020304 e NRI.',
             ),
-            Padding(
-              padding: const EdgeInsets.only(left: AppSpacing.md, top: AppSpacing.xs),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '• Estoque Total (020502): Atualiza o inventário base diário',
-                    style: GoogleFonts.poppins(
-                      fontSize: AppFontSizes.caption,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  Text(
-                    '• Validades (Contagens): Importa lotes com data de validade',
-                    style: GoogleFonts.poppins(
-                      fontSize: AppFontSizes.caption,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
+            _buildInstructionStep(
+              '3.',
+              'Clique em "Processar Estoque FEFO". As 3 planilhas são enviadas juntas '
+              'para cálculo do estoque gerencial.',
             ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              '3. Selecione o arquivo .xlsx com as colunas corretas.',
-              style: GoogleFonts.poppins(
-                fontSize: AppFontSizes.body,
-                color: AppColors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              '4. Clique em "Enviar" para processar a importação.',
-              style: GoogleFonts.poppins(
-                fontSize: AppFontSizes.body,
-                color: AppColors.textSecondary,
-              ),
-            ),
-            
             const SizedBox(height: AppSpacing.lg),
-            
             Container(
               padding: const EdgeInsets.all(AppSpacing.md),
               decoration: BoxDecoration(
@@ -642,7 +611,7 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
-                      'Formatos aceitos: .xlsx (máximo 10MB)',
+                      'Formatos aceitos: .xlsx, .xls, .csv (máximo 10MB por arquivo)',
                       style: GoogleFonts.poppins(
                         fontSize: AppFontSizes.body,
                         color: AppColors.warning,
@@ -658,7 +627,39 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
     );
   }
 
-  /// Histórico de uploads
+  Widget _buildInstructionStep(String step, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            step,
+            style: GoogleFonts.poppins(
+              fontSize: AppFontSizes.body,
+              fontWeight: FontWeight.w700,
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              text,
+              style: GoogleFonts.poppins(
+                fontSize: AppFontSizes.body,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // -----------------------------------------------------------------------
+  // Histórico (mantido igual ao original)
+  // -----------------------------------------------------------------------
+
   Widget _buildUploadHistory() {
     return Card(
       elevation: 0,
@@ -697,7 +698,6 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
             ),
           ),
           const Divider(height: 1),
-          
           if (_isLoadingHistory && _uploadHistory.isEmpty)
             const Padding(
               padding: EdgeInsets.all(AppSpacing.xl),
@@ -731,9 +731,8 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
               physics: const NeverScrollableScrollPhysics(),
               itemCount: _uploadHistory.length,
               separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                return _buildHistoryItem(_uploadHistory[index]);
-              },
+              itemBuilder: (context, index) =>
+                  _buildHistoryItem(_uploadHistory[index]),
             ),
         ],
       ),
@@ -803,7 +802,7 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
                 borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
               child: Text(
-                '${item.linhasProcessadas} registros',
+                '${item.linhasProcessadas} SKUs',
                 style: GoogleFonts.poppins(
                   fontSize: AppFontSizes.caption,
                   fontWeight: FontWeight.w600,
@@ -815,138 +814,132 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
     );
   }
 
-  // ============= MÉTODOS =============
+  // -----------------------------------------------------------------------
+  // Métodos auxiliares
+  // -----------------------------------------------------------------------
 
-  /// Seleciona arquivo via file_picker
-  Future<void> _selectFile(String uploadType) async {
+  /// Abre o FilePicker para um dos 3 tipos de arquivo.
+  /// [tipo] pode ser '020502', '020304' ou 'nri'.
+  Future<void> _selectFile(String tipo) async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['xlsx', 'xls', 'csv'],
-        withData: true, // Necessário para web
+        withData: true,
       );
 
-      if (result != null && result.files.isNotEmpty) {
-        final file = result.files.first;
-        
-        // Verifica tamanho (max 10MB)
-        if (file.size > 10 * 1024 * 1024) {
-          _showError('Arquivo muito grande. Máximo permitido: 10MB');
-          return;
-        }
-        
-        setState(() {
-          _selectedFileName = file.name;
-          _selectedFileBytes = file.bytes;
-          _uploadType = uploadType;
-        });
+      if (result == null || result.files.isEmpty) return;
+
+      final file = result.files.first;
+
+      if (file.size > 10 * 1024 * 1024) {
+        _showError('Arquivo muito grande. Máximo permitido: 10MB');
+        return;
       }
+
+      if (file.bytes == null) {
+        _showError('Não foi possível ler o arquivo. Tente novamente.');
+        return;
+      }
+
+      final arquivo = ArquivoUpload(nome: file.name, bytes: file.bytes!);
+
+      setState(() {
+        switch (tipo) {
+          case '020502':
+            _arquivo020502 = arquivo;
+            break;
+          case '020304':
+            _arquivo020304 = arquivo;
+            break;
+          case 'nri':
+            _arquivoNri = arquivo;
+            break;
+        }
+      });
     } catch (e) {
       _showError('Erro ao selecionar arquivo: $e');
     }
   }
 
-  /// Limpa seleção de arquivo
-  void _clearSelection() {
+  /// Limpa todos os arquivos selecionados.
+  void _clearAllFiles() {
     setState(() {
-      _selectedFileName = null;
-      _selectedFileBytes = null;
-      _uploadType = null;
+      _arquivo020502 = null;
+      _arquivo020304 = null;
+      _arquivoNri = null;
     });
   }
 
-  /// Realiza upload do arquivo
+  /// Envia os 3 arquivos para a API.
   Future<void> _performUpload() async {
-    if (_selectedUnidade == null || 
-        _selectedFileName == null || 
-        _selectedFileBytes == null ||
-        _uploadType == null) {
-      return;
-    }
+    if (_selectedUnidade == null ||
+        _arquivo020502 == null ||
+        _arquivo020304 == null ||
+        _arquivoNri == null) return;
 
     setState(() => _isUploading = true);
 
     try {
-      UploadResult result;
-      
-      if (_uploadType == 'grade') {
-        result = await _uploadService.uploadGrade020502(
-          unidadeNegocioId: _selectedUnidade!.id,
-          fileName: _selectedFileName!,
-          fileBytes: _selectedFileBytes!,
-        );
-      } else {
-        result = await _uploadService.uploadContagens(
-          unidadeNegocioId: _selectedUnidade!.id,
-          fileName: _selectedFileName!,
-          fileBytes: _selectedFileBytes!,
-        );
-      }
+      final result = await _uploadService.uploadEstoqueFefo(
+        arquivo020502: _arquivo020502!,
+        arquivo020304: _arquivo020304!,
+        arquivoNri: _arquivoNri!,
+        unidadeNegocioId: _selectedUnidade!.id,
+      );
 
       setState(() {
         _isUploading = false;
-        _clearSelection();
+        if (result.success) _clearAllFiles();
       });
 
       if (result.success) {
-        _showSuccess('Arquivo processado com sucesso! '
-            '${result.processed} registros, '
-            '${result.created} criados, '
-            '${result.updated} atualizados.');
+        _showSuccess(
+          'Estoque FEFO processado com sucesso! '
+          '${result.skusAtualizados} SKUs atualizados.',
+        );
       } else {
-        _showError(result.errorMessage ?? 'Erro ao processar arquivo');
+        _showError(result.errorMessage ?? 'Erro ao processar arquivos.');
       }
-      
-      // Mostra warnings se houver
+
       if (result.warnings.isNotEmpty) {
         _showWarning('Avisos: ${result.warnings.join(", ")}');
       }
-      
-      // Atualiza histórico da API
-      _loadUploadHistory();
 
+      _loadUploadHistory();
     } on AuthException catch (e) {
       setState(() => _isUploading = false);
       _handleAuthError(e.message);
     } catch (e) {
       setState(() => _isUploading = false);
-      _showError('Erro ao enviar arquivo: $e');
+      _showError('Erro ao enviar arquivos: $e');
     }
   }
 
   String _formatTimestamp(DateTime dt) {
-    final local = dt.toLocal(); // Converte UTC para horário local
+    final local = dt.toLocal();
     return '${local.day.toString().padLeft(2, '0')}/'
-           '${local.month.toString().padLeft(2, '0')}/'
-           '${local.year} '
-           '${local.hour.toString().padLeft(2, '0')}:'
-           '${local.minute.toString().padLeft(2, '0')}';
+        '${local.month.toString().padLeft(2, '0')}/'
+        '${local.year} '
+        '${local.hour.toString().padLeft(2, '0')}:'
+        '${local.minute.toString().padLeft(2, '0')}';
   }
 
   void _showSuccess(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: AppColors.success,
-      ),
+      SnackBar(content: Text(message), backgroundColor: AppColors.success),
     );
   }
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: AppColors.error,
-      ),
+      SnackBar(content: Text(message), backgroundColor: AppColors.error),
     );
   }
 
   void _showWarning(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: AppColors.warning,
-      ),
+      SnackBar(content: Text(message), backgroundColor: AppColors.warning),
     );
   }
 

@@ -62,22 +62,19 @@ class _StockReportScreenState extends State<StockReportScreen> {
       int qtdVencida = 0;
 
       for (final sku in skus) {
-        totalQtd += sku.quantidadeTotal;
-
-        // Usa o valor real do estoque calculado no backend
-        valorTotal += sku.valorEstoque;
+        totalQtd += sku.qtdDisponivelVenda;
 
         final status = sku.statusTexto.toLowerCase();
         final isVencidoOuSemLote = status.contains('vencido') || status.contains('sem lote');
 
         if (isVencidoOuSemLote) {
           vencidosCount++;
-          qtdVencida += sku.quantidadeTotal;
+          qtdVencida += sku.qtdDisponivelVenda;
         }
       }
 
       // Ordena por quantidade (maior primeiro)
-      skus.sort((a, b) => b.quantidadeTotal.compareTo(a.quantidadeTotal));
+      skus.sort((a, b) => b.qtdDisponivelVenda.compareTo(a.qtdDisponivelVenda));
 
       setState(() {
         _skus = skus;
@@ -424,8 +421,8 @@ class _StockReportScreenState extends State<StockReportScreen> {
 
   Widget _buildProductTile(Sku sku, int ranking) {
     // Calcula barra de progresso baseada na maior quantidade
-    final maxQtd = _skus.isNotEmpty ? _skus.first.quantidadeTotal : 1;
-    final progress = maxQtd > 0 ? sku.quantidadeTotal / maxQtd : 0.0;
+    final maxQtd = _skus.isNotEmpty ? _skus.first.qtdDisponivelVenda : 1;
+    final progress = maxQtd > 0 ? sku.qtdDisponivelVenda / maxQtd : 0.0;
 
     return Card(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -506,7 +503,7 @@ class _StockReportScreenState extends State<StockReportScreen> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        _numberFormat.format(sku.quantidadeTotal),
+                        _numberFormat.format(sku.qtdDisponivelVenda),
                         style: GoogleFonts.poppins(
                           fontSize: AppFontSizes.subtitle,
                           fontWeight: FontWeight.bold,

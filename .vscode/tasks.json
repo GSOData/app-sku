@@ -1,0 +1,77 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Web: Flutter (Chrome)",
+      "type": "shell",
+      "command": "flutter",
+      "args": [
+        "run",
+        "-d",
+        "chrome",
+        "--web-port",
+        "3000",
+        "--web-hostname",
+        "127.0.0.1"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/app_mobile"
+      },
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "clear": true
+      }
+    },
+    {
+      "label": "API: Django (local)",
+      "type": "shell",
+      "command": "${workspaceFolder}\\venv\\Scripts\\python.exe",
+      "args": [
+        "manage.py",
+        "runserver",
+        "127.0.0.1:8000"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/backend"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "custom",
+        "pattern": [
+          {
+            "regexp": ".*"
+          }
+        ],
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "Performing system checks|Watching for file changes",
+          "endsPattern": "Starting development server at"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "clear": true
+      }
+    },
+    {
+      "label": "Web: Flutter + API (local)",
+      "dependsOrder": "parallel",
+      "dependsOn": [
+        "API: Django (local)",
+        "Web: Flutter (Chrome)"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    }
+  ]
+}

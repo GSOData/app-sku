@@ -10,7 +10,6 @@ from .models import (
     UsuarioUnidade,
     ConfiguracaoAlerta,
     SKU,
-    LoteValidade,
     MovimentacaoEstoque,
     LogConsulta,
     HistoricoUpload,
@@ -52,19 +51,10 @@ class ConfiguracaoAlertaAdmin(admin.ModelAdmin):
 
 @admin.register(SKU)
 class SKUAdmin(admin.ModelAdmin):
-    list_display = ['codigo_sku', 'nome_produto', 'unidade_negocio', 'categoria', 'unidade_medida', 'ativo']
+    list_display = ['codigo_sku', 'nome_produto', 'unidade_negocio', 'categoria', 'unidade_medida', 'validade_inicio_range', 'ativo']
     list_filter = ['ativo', 'unidade_negocio', 'categoria', 'unidade_medida']
     search_fields = ['codigo_sku', 'nome_produto', 'descricao']
     ordering = ['nome_produto']
-
-
-@admin.register(LoteValidade)
-class LoteValidadeAdmin(admin.ModelAdmin):
-    list_display = ['numero_lote', 'sku', 'data_validade', 'qtd_estoque', 'localizacao', 'ativo']
-    list_filter = ['ativo', 'data_validade', 'sku__unidade_negocio']
-    search_fields = ['numero_lote', 'sku__codigo_sku', 'sku__nome_produto']
-    ordering = ['data_validade']
-    date_hierarchy = 'data_validade'
 
 
 @admin.register(MovimentacaoEstoque)

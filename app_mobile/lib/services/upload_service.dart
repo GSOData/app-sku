@@ -7,25 +7,21 @@ import 'auth_service.dart';
 // Re-exporta UnidadeNegocio do auth_service para manter compatibilidade
 export 'auth_service.dart' show UnidadeNegocio;
 
-/// Resultado do upload
+/// Resultado do upload FEFO.
+///
+/// O backend agora retorna [skusAtualizados] em vez de processed/created/updated.
 class UploadResult {
   final bool success;
-  final String? tipo;
   final String? unidade;
-  final int processed;
-  final int created;
-  final int updated;
+  final int skusAtualizados;
   final List<String> errors;
   final List<String> warnings;
   final String? errorMessage;
 
   UploadResult({
     required this.success,
-    this.tipo,
     this.unidade,
-    this.processed = 0,
-    this.created = 0,
-    this.updated = 0,
+    this.skusAtualizados = 0,
     this.errors = const [],
     this.warnings = const [],
     this.errorMessage,
@@ -34,11 +30,8 @@ class UploadResult {
   factory UploadResult.fromJson(Map<String, dynamic> json) {
     return UploadResult(
       success: json['success'] ?? false,
-      tipo: json['tipo'],
       unidade: json['unidade'],
-      processed: json['processed'] ?? 0,
-      created: json['created'] ?? 0,
-      updated: json['updated'] ?? 0,
+      skusAtualizados: json['skus_atualizados'] ?? 0,
       errors: List<String>.from(json['errors'] ?? []),
       warnings: List<String>.from(json['warnings'] ?? []),
       errorMessage: json['error'],
@@ -46,25 +39,27 @@ class UploadResult {
   }
 
   factory UploadResult.error(String message) {
-    return UploadResult(
-      success: false,
-      errorMessage: message,
-    );
+    return UploadResult(success: false, errorMessage: message);
   }
 }
 
-/// Service para upload de arquivos e consulta de unidades
+/// Arquivo individual para o upload FEFO.
+///
+/// Agrupa o nome e os bytes de uma planilha selecionada via FilePicker.
+class ArquivoUpload {
+  final String nome;
+  final Uint8List bytes;
+
+  const ArquivoUpload({required this.nome, required this.bytes});
+}
+
+/// Service para upload de arquivos e consulta de unidades.
 class UploadService {
   final AuthService authService;
 
   UploadService({required this.authService});
 
-  /// Retorna headers com token de autenticação
-  Map<String, String> get _headers => {
-        'Authorization': 'Bearer ${authService.accessToken}',
-      };
-
-  /// Busca lista de unidades de negócio
+  /// Busca lista de unidades de negócio.
   Future<List<UnidadeNegocio>> getUnidades() async {
     try {
       final response = await http.get(
@@ -76,13 +71,9 @@ class UploadService {
       );
 
       if (response.statusCode == 200) {
-        // 1. Decodifica usando UTF-8 para manter os acentos
-        // 2. Transforma em Map para podermos acessar a chave 'results'
-        final Map<String, dynamic> decodedData = json.decode(utf8.decode(response.bodyBytes));
-        
-        // 3. Pega apenas a lista real que está dentro de 'results'
-        final List<dynamic> data = decodedData['results']; 
-        
+        final Map<String, dynamic> decodedData =
+            json.decode(utf8.decode(response.bodyBytes));
+        final List<dynamic> data = decodedData['results'];
         return data.map((item) => UnidadeNegocio.fromJson(item)).toList();
       } else if (response.statusCode == 401) {
         throw AuthException('Sessão expirada. Faça login novamente.');
@@ -95,71 +86,61 @@ class UploadService {
     }
   }
 
-  /// Upload de planilha Grade 020502 (Estoque Total)
-  Future<UploadResult> uploadGrade020502({
+  /// Upload unificado das 3 planilhas FEFO para o endpoint
+  /// `POST /api/upload/grade-020502/`.
+  ///
+  /// Parâmetros:
+  /// - [arquivo020502] — Grade 020502 (Estoque Total Diário)
+  /// - [arquivo020304] — Grade 020304 (Buffer de Segurança)
+  /// - [arquivoNri]    — Planilha NRI (Não-Regular de Inventário)
+  /// - [unidadeNegocioId] — ID da unidade de negócio
+  Future<UploadResult> uploadEstoqueFefo({
+    required ArquivoUpload arquivo020502,
+    required ArquivoUpload arquivo020304,
+    required ArquivoUpload arquivoNri,
     required int unidadeNegocioId,
-    required String fileName,
-    required Uint8List fileBytes,
-  }) async {
-    return _uploadFile(
-      endpoint: 'upload/grade-020502/',
-      unidadeNegocioId: unidadeNegocioId,
-      fileName: fileName,
-      fileBytes: fileBytes,
-    );
-  }
-
-  /// Upload de planilha de Contagens (Validades)
-  Future<UploadResult> uploadContagens({
-    required int unidadeNegocioId,
-    required String fileName,
-    required Uint8List fileBytes,
-  }) async {
-    return _uploadFile(
-      endpoint: 'upload/contagens/',
-      unidadeNegocioId: unidadeNegocioId,
-      fileName: fileName,
-      fileBytes: fileBytes,
-    );
-  }
-
-  /// Método interno para upload de arquivo multipart
-  Future<UploadResult> _uploadFile({
-    required String endpoint,
-    required int unidadeNegocioId,
-    required String fileName,
-    required Uint8List fileBytes,
   }) async {
     try {
-      final uri = Uri.parse('${Constants.apiUrl}$endpoint');
+      final uri = Uri.parse('${Constants.apiUrl}upload/grade-020502/');
       final request = http.MultipartRequest('POST', uri);
 
-      // Headers
       request.headers['Authorization'] = 'Bearer ${authService.accessToken}';
-
-      // Campos
       request.fields['unidade_negocio_id'] = unidadeNegocioId.toString();
 
-      // Arquivo
+      // Os 3 arquivos com os field names que o backend espera
       request.files.add(http.MultipartFile.fromBytes(
-        'file',
-        fileBytes,
-        filename: fileName,
+        'file_020502',
+        arquivo020502.bytes,
+        filename: arquivo020502.nome,
+      ));
+      request.files.add(http.MultipartFile.fromBytes(
+        'file_020304',
+        arquivo020304.bytes,
+        filename: arquivo020304.nome,
+      ));
+      request.files.add(http.MultipartFile.fromBytes(
+        'file_nri',
+        arquivoNri.bytes,
+        filename: arquivoNri.nome,
       ));
 
-      // Envia
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+        final data = json.decode(utf8.decode(response.bodyBytes));
         return UploadResult.fromJson(data);
       } else if (response.statusCode == 401) {
         throw AuthException('Sessão expirada. Faça login novamente.');
       } else {
-        // Tenta parsear erro do backend
         try {
           final data = json.decode(response.body);
+          // O backend retorna erros por campo em 'errors' (dict) ou em 'error' (string)
+          final fieldErrors = data['errors'];
+          if (fieldErrors is Map) {
+            final mensagens = fieldErrors.values.join('\n');
+            return UploadResult.error(mensagens);
+          }
           return UploadResult.error(
             data['error'] ?? 'Erro no upload: ${response.statusCode}',
           );

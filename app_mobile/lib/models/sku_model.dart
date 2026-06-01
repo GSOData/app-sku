@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'package:intl/intl.dart';
 
 /// Modelos de dados do sistema SKU+
 
@@ -23,34 +24,10 @@ class UnidadeNegocio {
   }
 }
 
-/// Modelo de Lote/Validade resumido
-class LoteResumo {
-  final int id;
-  final String numeroLote;
-  final DateTime dataValidade;
-  final int qtdEstoque;
-  final int diasAteVencimento;
-
-  LoteResumo({
-    required this.id,
-    required this.numeroLote,
-    required this.dataValidade,
-    required this.qtdEstoque,
-    required this.diasAteVencimento,
-  });
-
-  factory LoteResumo.fromJson(Map<String, dynamic> json) {
-    return LoteResumo(
-      id: json['id'] ?? 0,
-      numeroLote: json['numero_lote'] ?? '',
-      dataValidade: DateTime.tryParse(json['data_validade'] ?? '') ?? DateTime.now(),
-      qtdEstoque: json['qtd_estoque'] ?? 0,
-      diasAteVencimento: json['dias_ate_vencimento'] ?? 0,
-    );
-  }
-}
-
-/// Modelo de SKU principal
+/// Modelo de SKU principal — arquitetura FEFO Reverso.
+///
+/// Os campos de lote foram substituídos por um range de validade
+/// e quantidades gerenciais calculadas pelo backend.
 class Sku {
   final int id;
   final String codigoSku;
@@ -58,16 +35,33 @@ class Sku {
   final UnidadeNegocio? unidadeNegocio;
   final String? categoria;
   final String? unidadeMedida;
+  final int? fatorConversao;
   final String? descricao;
   final String? imagemUrl;
-  final int quantidadeTotal;
-  final int quantidadeUnidade;  // Quantidade na unidade de medida do SKU (ex: caixas)
-  final int quantidadeTransito;
-  final double valorEstoque;
-  final LoteResumo? loteMaisProximo;
+
+  // --- Quantidades gerenciais (FEFO Reverso) ---
+  /// Total bruto da Grade 020502.
+  final int qtdTotal020502;
+
+  /// Buffer de segurança da Grade 020304.
+  final int qtdBuffer020304;
+
+  /// Quantidade líquida disponível para venda (020502 - 020304 - NRI).
+  /// Este é o estoque principal a ser exibido na UI.
+  final int qtdDisponivelVenda;
+
+  // --- Range de validade ---
+  /// Data de validade do lote mais próximo do vencimento com estoque.
+  final DateTime? validadeInicioRange;
+
+  /// Data de validade do lote mais distante do vencimento com estoque.
+  final DateTime? validadeFimRange;
+
+  // --- Status calculados pelo backend ---
   final String statusTexto;
   final String statusCor;
   final int? statusDiasRestantes;
+
   final bool ativo;
 
   Sku({
@@ -77,13 +71,14 @@ class Sku {
     this.unidadeNegocio,
     this.categoria,
     this.unidadeMedida,
+    this.fatorConversao,
     this.descricao,
     this.imagemUrl,
-    this.quantidadeTotal = 0,
-    this.quantidadeUnidade = 0,
-    this.quantidadeTransito = 0,
-    this.valorEstoque = 0.0,
-    this.loteMaisProximo,
+    this.qtdTotal020502 = 0,
+    this.qtdBuffer020304 = 0,
+    this.qtdDisponivelVenda = 0,
+    this.validadeInicioRange,
+    this.validadeFimRange,
     this.statusTexto = 'Indefinido',
     this.statusCor = '#9E9E9E',
     this.statusDiasRestantes,
@@ -91,7 +86,6 @@ class Sku {
   });
 
   factory Sku.fromJson(Map<String, dynamic> json) {
-    final qtdTotal = json['quantidade_total'] ?? json['quantidade'] ?? 0;
     return Sku(
       id: json['id'] ?? 0,
       codigoSku: json['codigo_sku'] ?? '',
@@ -101,97 +95,75 @@ class Sku {
           : null,
       categoria: json['categoria'],
       unidadeMedida: json['unidade_medida'],
+      fatorConversao: json['fator_conversao'],
       descricao: json['descricao'],
       imagemUrl: json['imagem_url'],
-      // Aceita 'quantidade_total' ou 'quantidade' (usado no relatório de criticidade)
-      quantidadeTotal: qtdTotal,
-      // Quantidade na unidade de medida do SKU (usa total como fallback)
-      quantidadeUnidade: json['quantidade_unidade'] ?? qtdTotal,
-      quantidadeTransito: json['quantidade_transito'] ?? 0,
-      valorEstoque: (json['valor_estoque'] ?? 0).toDouble(),
-      loteMaisProximo: json['lote_mais_proximo'] != null
-          ? LoteResumo.fromJson(json['lote_mais_proximo'])
+      qtdTotal020502: json['qtd_total_020502'] ?? 0,
+      qtdBuffer020304: json['qtd_buffer_020304'] ?? 0,
+      // Aceita também o campo 'quantidade' usado no relatório de criticidade
+      qtdDisponivelVenda:
+          json['qtd_disponivel_venda'] ?? json['quantidade'] ?? 0,
+      validadeInicioRange: json['validade_inicio_range'] != null
+          ? DateTime.tryParse(json['validade_inicio_range'])
+          : null,
+      validadeFimRange: json['validade_fim_range'] != null
+          ? DateTime.tryParse(json['validade_fim_range'])
           : null,
       statusTexto: json['status_texto'] ?? 'Indefinido',
       statusCor: json['status_cor'] ?? '#9E9E9E',
-      statusDiasRestantes: json['status_dias_restantes'] ?? json['dias_restantes'],
+      statusDiasRestantes:
+          json['status_dias_restantes'] ?? json['dias_restantes'],
       ativo: json['ativo'] ?? true,
     );
   }
 
-  /// Retorna a cor do status como Color do Flutter
+  // ---------------------------------------------------------------------------
+  // Getters auxiliares
+  // ---------------------------------------------------------------------------
+
+  /// Cor do status como [Color] do Flutter.
+  /// Suporta hex de 6 dígitos (#RRGGBB) e 8 dígitos (#AARRGGBB).
   Color get statusColor {
-    String hex = statusCor.replaceAll('#', '');
-    if (hex.length == 6) {
-      hex = 'FF$hex';
-    }
-    return Color(int.parse(hex, radix: 16));
+    final hex = statusCor.replaceAll('#', '');
+    final padded = hex.length == 6 ? 'FF$hex' : hex;
+    return Color(int.parse(padded, radix: 16));
   }
 
-  /// Verifica se o produto está vencido
-  bool get isVencido => statusTexto.toLowerCase() == 'vencido';
+  bool get isVencido =>
+      statusTexto.toLowerCase() == 'vencido';
 
-  /// Verifica se o produto está crítico
-  bool get isCritico => statusTexto.toLowerCase() == 'crítico';
+  bool get isExtremamenteCritico =>
+      statusTexto.toLowerCase().contains('extremamente');
 
-  /// Verifica se o produto está em pré-bloqueio
-  bool get isPreBloqueio => statusTexto.toLowerCase().contains('pré');
-}
+  bool get isBloqueado =>
+      statusTexto.toLowerCase() == 'bloqueado';
 
-/// Modelo de Lote completo
-class Lote {
-  final int id;
-  final int skuId;
-  final String? skuCodigo;
-  final String? skuNome;
-  final String numeroLote;
-  final DateTime dataValidade;
-  final DateTime? dataFabricacao;
-  final int qtdEstoque;
-  final String? localizacao;
-  final double? custoUnitario;
-  final String? fornecedor;
-  final int diasAteVencimento;
-  final bool estaVencido;
-  final bool ativo;
+  bool get isPreBloqueio =>
+      statusTexto.toLowerCase().contains('pré');
 
-  Lote({
-    required this.id,
-    required this.skuId,
-    this.skuCodigo,
-    this.skuNome,
-    required this.numeroLote,
-    required this.dataValidade,
-    this.dataFabricacao,
-    this.qtdEstoque = 0,
-    this.localizacao,
-    this.custoUnitario,
-    this.fornecedor,
-    this.diasAteVencimento = 0,
-    this.estaVencido = false,
-    this.ativo = true,
-  });
+  bool get isOk => statusTexto.toLowerCase() == 'ok';
 
-  factory Lote.fromJson(Map<String, dynamic> json) {
-    return Lote(
-      id: json['id'] ?? 0,
-      skuId: json['sku'] ?? 0,
-      skuCodigo: json['sku_codigo'],
-      skuNome: json['sku_nome'],
-      numeroLote: json['numero_lote'] ?? '',
-      dataValidade: DateTime.tryParse(json['data_validade'] ?? '') ?? DateTime.now(),
-      dataFabricacao: json['data_fabricacao'] != null
-          ? DateTime.tryParse(json['data_fabricacao'])
-          : null,
-      qtdEstoque: json['qtd_estoque'] ?? 0,
-      localizacao: json['localizacao'],
-      custoUnitario: json['custo_unitario'] != null
-          ? double.tryParse(json['custo_unitario'].toString())
-          : null,
-      fornecedor: json['fornecedor'],
-      diasAteVencimento: json['dias_ate_vencimento'] ?? 0,
-      estaVencido: json['esta_vencido'] ?? false,
-      ativo: json['ativo'] ?? true,
-    );
+  bool get semEstoque => statusTexto.toLowerCase().contains('sem estoque');
+
+  /// Retorna uma string amigável com o range de validade.
+  ///
+  /// Exemplos de retorno:
+  /// - `'12/2026 até 04/2027'`   (range com duas datas distintas)
+  /// - `'Vence em 12/2026'`      (início == fim, mês único)
+  /// - `'Vence em 12/2026'`      (somente inicio preenchido)
+  /// - `'—'`                     (sem validade registrada)
+  String getRangeValidadeFormatado() {
+    if (validadeInicioRange == null) return '—';
+
+    final fmt = DateFormat('MM/yyyy');
+    final inicio = fmt.format(validadeInicioRange!);
+
+    if (validadeFimRange == null) return 'Vence em $inicio';
+
+    final fim = fmt.format(validadeFimRange!);
+
+    if (inicio == fim) return 'Vence em $inicio';
+
+    return '$inicio até $fim';
   }
 }

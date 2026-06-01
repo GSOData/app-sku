@@ -36,7 +36,6 @@ from .models import (
     UsuarioUnidade,
     ConfiguracaoAlerta,
     SKU,
-    LoteValidade,
     MovimentacaoEstoque,
     LogConsulta,
     HistoricoUpload,
@@ -53,8 +52,6 @@ from .serializers import (
     SKUListSerializer,
     SKUEstoqueSerializer,
     SKUCriticidadeSerializer,
-    LoteValidadeSerializer,
-    LoteValidadeResumoSerializer,
     MovimentacaoEstoqueSerializer,
     LogConsultaSerializer,
     NotificacaoAlertaSerializer,
@@ -68,7 +65,6 @@ from .pagination import (
     SKUPagination,
     CriticidadePagination,
     HistoricoUploadPagination,
-    LotePagination,
 )
 
 
@@ -148,29 +144,6 @@ class UnidadeAccessMixin:
         
         filter_kwargs = {f'{unidade_field}_id': unidade_id}
         return queryset.filter(**filter_kwargs)
-    
-    def exclude_vencidos_para_vendedor(self, queryset, data_validade_field='data_validade'):
-        """
-        Exclui itens vencidos do queryset se o usuário for VENDEDOR.
-        Gerentes e Diretoria continuam vendo os itens vencidos.
-        
-        Args:
-            queryset: queryset a ser filtrado
-            data_validade_field: nome do campo de data de validade
-        
-        Returns:
-            queryset filtrado (sem vencidos para vendedores)
-        """
-        if self.is_vendedor_na_unidade_ativa():
-            from django.utils import timezone
-            hoje = timezone.now().date()
-            # Exclui itens onde data_validade <= hoje (vencidos)
-            filter_kwargs = {f'{data_validade_field}__gt': hoje}
-            # Também mantém itens sem data de validade (lote BASE)
-            return queryset.filter(
-                Q(**filter_kwargs) | Q(**{f'{data_validade_field}__isnull': True})
-            )
-        return queryset
 
 
 def get_client_ip(request):
@@ -345,29 +318,8 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
         return SKUSerializer
     
     def get_queryset(self):
-        # Monta queryset dos lotes com filtro de vencidos para vendedor
-        lotes_queryset = LoteValidade.objects.filter(
-            ativo=True, 
-            qtd_estoque__gt=0
-        ).exclude(
-            numero_lote='BASE'  # Exclui Lote BASE
-        ).order_by('data_validade')
-        
-        # Se for vendedor, exclui lotes vencidos do prefetch
-        if self.is_vendedor_na_unidade_ativa():
-            from django.utils import timezone
-            hoje = timezone.now().date()
-            lotes_queryset = lotes_queryset.filter(
-                Q(data_validade__gt=hoje) | Q(data_validade__isnull=True)
-            )
-        
         queryset = SKU.objects.filter(ativo=True).select_related(
             'unidade_negocio'
-        ).prefetch_related(
-            Prefetch(
-                'lotes',
-                queryset=lotes_queryset
-            )
         )
         
         # Filtra pela unidade ativa (obrigatório)
@@ -377,7 +329,7 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
         search = self.request.query_params.get('search', None)
         if search:
             queryset = queryset.filter(
-                Q(codigo_sku__icontains=search) | 
+                Q(codigo_sku__icontains=search) |
                 Q(nome_produto__icontains=search)
             )
         
@@ -427,11 +379,8 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # get_queryset já aplica o filtro de unidade ativa
-        queryset = self.get_queryset().filter(
-            Q(codigo_sku__icontains=search) | 
-            Q(nome_produto__icontains=search)
-        )
+        # get_queryset já aplica o filtro de unidade ativa e o filtro de search
+        queryset = self.get_queryset()
         
         # Log de consulta
         log_consulta(
@@ -442,28 +391,10 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
         )
         
         serializer = SKUSerializer(
-            queryset, 
-            many=True, 
+            queryset,
+            many=True,
             context={'request': request}
         )
-        return Response(serializer.data)
-    
-    @action(detail=True, methods=['get'])
-    def lotes(self, request, pk=None):
-        """
-        GET /api/skus/{id}/lotes/
-        
-        Retorna todos os lotes de um SKU ordenados por validade (FEFO).
-        Exclui o Lote BASE.
-        """
-        sku = self.get_object()
-        lotes = sku.lotes.filter(
-            ativo=True, 
-            qtd_estoque__gt=0
-        ).exclude(
-            numero_lote='BASE'  # Exclui Lote BASE
-        ).order_by('data_validade')
-        serializer = LoteValidadeResumoSerializer(lotes, many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, IsAdmin])
@@ -471,7 +402,7 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
         """
         POST /api/skus/limpar_banco/
         
-        PERIGO: Remove TODOS os SKUs e Lotes do sistema.
+        PERIGO: Remove TODOS os SKUs do sistema.
         Apenas usuários ADMIN podem executar.
         
         Body (opcional):
@@ -492,10 +423,6 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
         
         # Contagem antes da exclusão
         total_skus = SKU.objects.count()
-        total_lotes = LoteValidade.objects.count()
-        
-        # Deleta todos os lotes (cascade)
-        LoteValidade.objects.all().delete()
         
         # Deleta todos os SKUs
         SKU.objects.all().delete()
@@ -506,7 +433,6 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
             tipo='ADMIN_LIMPAR_BANCO',
             parametros={
                 'skus_deletados': total_skus,
-                'lotes_deletados': total_lotes,
                 'ip': request.META.get('REMOTE_ADDR'),
             },
             request=request
@@ -516,7 +442,6 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
             'success': True,
             'message': 'Banco de dados limpo com sucesso.',
             'skus_deletados': total_skus,
-            'lotes_deletados': total_lotes,
         })
 
 
@@ -536,8 +461,8 @@ class RelatorioCriticidadeView(UnidadeAccessMixin, APIView):
     }
     
     RBAC:
-    - VENDEDOR: NÃO vê itens vencidos (data_validade < hoje)
-    - GERENTE/DIRETORIA: Vê todos os itens incluindo vencidos
+    - VENDEDOR: NÃO vê SKUs com status VENCIDO
+    - GERENTE/DIRETORIA: Vê todos os status incluindo VENCIDO
     """
     permission_classes = [IsAuthenticated]
     
@@ -578,11 +503,10 @@ class RelatorioCriticidadeView(UnidadeAccessMixin, APIView):
             config = getattr(unidade, 'configuracao_alerta', None)
         if not config:
             config = ConfiguracaoAlerta.objects.filter(
-                unidade__isnull=True, 
+                unidade__isnull=True,
                 ativo=True
             ).first()
         
-        # Novos campos de configuração
         dias_pre_bloqueio = config.dias_pre_bloqueio if config else 60
         dias_bloqueado = config.dias_bloqueado if config else 30
         dias_extremamente_critico = config.dias_extremamente_critico if config else 7
@@ -592,49 +516,31 @@ class RelatorioCriticidadeView(UnidadeAccessMixin, APIView):
         if unidade and not request.user.is_superuser:
             is_vendedor = request.user.is_vendedor(unidade.id)
         
-        # Monta queryset dos lotes - exclui vencidos para vendedores
-        hoje = date.today()
-        lotes_queryset = LoteValidade.objects.filter(
-            ativo=True, 
-            qtd_estoque__gt=0
-        ).order_by('data_validade')
-        
-        if is_vendedor:
-            # Vendedor não vê lotes vencidos
-            lotes_queryset = lotes_queryset.filter(
-                Q(data_validade__gt=hoje) | Q(data_validade__isnull=True)
-            )
-        
-        # Monta queryset base de SKUs
-        queryset = SKU.objects.filter(ativo=True).select_related(
-            'unidade_negocio'
-        ).prefetch_related(
-            Prefetch(
-                'lotes',
-                queryset=lotes_queryset
-            )
-        )
+        # Monta queryset base de SKUs com estoque disponível
+        queryset = SKU.objects.filter(
+            ativo=True,
+            qtd_disponivel_venda__gt=0,
+        ).select_related('unidade_negocio')
         
         if unidade:
             queryset = queryset.filter(unidade_negocio=unidade)
         else:
-            # Filtra por unidades do usuário
             unidades_ids = request.user.get_unidades_ids()
             queryset = queryset.filter(unidade_negocio_id__in=unidades_ids)
         
-        # Classifica SKUs por status (NOVAS CATEGORIAS)
-        bloqueados = []  # Vencidos + Extremamente Crítico + Bloqueado
+        # Classifica SKUs por status
+        bloqueados = []   # VENCIDO + EXTREMAMENTE_CRITICO + BLOQUEADO
         pre_bloqueio = []
         
         for sku in queryset:
             status_info = sku.get_status(config)
             status_code = status_info.get('status')
             
-            # Vendedor não deve ver VENCIDO no resultado
+            # Vendedor não vê SKUs com status VENCIDO
             if is_vendedor and status_code == 'VENCIDO':
                 continue
             
-            if status_code in ['VENCIDO', 'EXTREMAMENTE_CRITICO', 'BLOQUEADO']:
+            if status_code in ('VENCIDO', 'EXTREMAMENTE_CRITICO', 'BLOQUEADO'):
                 bloqueados.append(sku)
             elif status_code == 'PRE_BLOQUEIO':
                 pre_bloqueio.append(sku)
@@ -645,21 +551,21 @@ class RelatorioCriticidadeView(UnidadeAccessMixin, APIView):
             tipo='CRITICIDADE',
             parametros={
                 'unidade_id': unidade.id if unidade else None,
-                'codigo_unb': codigo_unb
+                'codigo_unb': codigo_unb,
             },
             request=request
         )
         
         # Serializa
         bloqueados_data = SKUCriticidadeSerializer(
-            bloqueados, 
-            many=True, 
+            bloqueados,
+            many=True,
             context={'request': request}
         ).data
         
         pre_bloqueio_data = SKUCriticidadeSerializer(
-            pre_bloqueio, 
-            many=True, 
+            pre_bloqueio,
+            many=True,
             context={'request': request}
         ).data
         
@@ -690,7 +596,7 @@ class EstoqueViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
     GET /api/estoque/{id}/
     
     Retorna SKUs com:
-    - Quantidade total em estoque (soma dos lotes)
+    - Quantidade total em estoque
     - Quantidade em trânsito
     - Quantidade total (estoque + trânsito)
     """
@@ -705,14 +611,6 @@ class EstoqueViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
         queryset = SKU.objects.filter(ativo=True).select_related(
             'unidade_negocio'
         ).prefetch_related(
-            Prefetch(
-                'lotes',
-                queryset=LoteValidade.objects.filter(
-                    ativo=True
-                ).exclude(
-                    numero_lote='BASE'  # Exclui Lote BASE
-                )
-            ),
             Prefetch(
                 'movimentacoes',
                 queryset=MovimentacaoEstoque.objects.filter(
@@ -730,7 +628,7 @@ class EstoqueViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
         search = self.request.query_params.get('search', None)
         if search:
             queryset = queryset.filter(
-                Q(codigo_sku__icontains=search) | 
+                Q(codigo_sku__icontains=search) |
                 Q(nome_produto__icontains=search)
             )
         
@@ -740,7 +638,6 @@ class EstoqueViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
         """Override para logar consulta de estoque."""
         response = super().list(request, *args, **kwargs)
         
-        # Log de consulta
         log_consulta(
             usuario=request.user,
             tipo='ESTOQUE',
@@ -762,10 +659,7 @@ class EstoqueViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
         """
         queryset = self.get_queryset()
         
-        # Calcula totais
         total_skus = queryset.count()
-        
-        # Total em estoque
         total_estoque = 0
         total_transito = 0
         skus_sem_estoque = 0
@@ -787,61 +681,6 @@ class EstoqueViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
             'total_geral': total_estoque + total_transito,
             'skus_sem_estoque': skus_sem_estoque,
         })
-
-
-# =============================================================================
-# LOTE / VALIDADE
-# =============================================================================
-class LoteValidadeViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
-    """
-    ViewSet para LoteValidade.
-    Exclui automaticamente o Lote BASE (data_validade=None).
-    
-    Permissões RBAC:
-    - VENDEDOR: somente leitura (não vê itens vencidos)
-    - GERENTE: CRUD completo
-    - DIRETORIA: leitura consolidada
-    """
-    serializer_class = LoteValidadeSerializer
-    permission_classes = [IsAuthenticated, CanReadSKU]
-    pagination_class = LotePagination
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['sku', 'ativo']
-    ordering_fields = ['data_validade', 'numero_lote', 'created_at']
-    ordering = ['data_validade']
-    
-    def get_queryset(self):
-        queryset = LoteValidade.objects.filter(
-            ativo=True
-        ).exclude(
-            numero_lote='BASE'  # Exclui Lote BASE
-        ).select_related(
-            'sku', 
-            'sku__unidade_negocio'
-        )
-        
-        # Filtra pela unidade ativa (obrigatório via SKU)
-        queryset = self.filter_by_unidade_ativa(queryset, unidade_field='sku__unidade_negocio')
-        
-        # VENDEDOR não vê itens vencidos
-        queryset = self.exclude_vencidos_para_vendedor(queryset, data_validade_field='data_validade')
-        
-        # Filtro por SKU específico
-        sku_id = self.request.query_params.get('sku_id', None)
-        if sku_id:
-            queryset = queryset.filter(sku_id=sku_id)
-        
-        # Filtro para mostrar apenas vencidos (só funciona para não-vendedores)
-        vencidos = self.request.query_params.get('vencidos', None)
-        if vencidos == 'true' and not self.is_vendedor_na_unidade_ativa():
-            queryset = queryset.filter(data_validade__lt=date.today())
-        
-        # Filtro para mostrar apenas com estoque
-        com_estoque = self.request.query_params.get('com_estoque', None)
-        if com_estoque == 'true':
-            queryset = queryset.filter(qtd_estoque__gt=0)
-        
-        return queryset
 
 
 # =============================================================================
@@ -883,7 +722,6 @@ class MovimentacaoEstoqueViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = MovimentacaoEstoque.objects.filter(ativo=True).select_related(
             'sku',
-            'lote',
             'unidade_origem',
             'unidade_destino',
             'usuario'
@@ -1062,7 +900,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
 class LogConsultaViewSet(viewsets.ReadOnlyModelViewSet):
     """
     ViewSet para LogConsulta (somente leitura).
-    Apenas superusuários podem ver.
+    Apenas superusuários podem ver todos os logs.
     """
     queryset = LogConsulta.objects.all().select_related('usuario')
     serializer_class = LogConsultaSerializer
@@ -1072,221 +910,185 @@ class LogConsultaViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ['-created_at']
     
     def get_queryset(self):
-        # Apenas superusuários veem todos os logs
         if not self.request.user.is_superuser:
             return LogConsulta.objects.filter(usuario=self.request.user)
         return super().get_queryset()
 
 
 # =============================================================================
-# UPLOAD DE ARQUIVOS
+# UPLOAD DE ARQUIVOS - ESTOQUE FEFO
 # =============================================================================
+
+ALLOWED_UPLOAD_EXTENSIONS = {'.xlsx', '.xls', '.csv'}
+
+
+def _validar_extensao_arquivo(file, field_name: str) -> str | None:
+    """
+    Valida a extensão de um arquivo enviado via multipart/form-data.
+
+    Retorna uma mensagem de erro (str) se inválida, ou None se válida.
+    Não lança exceção para permitir coleta de todos os erros antes de responder.
+    """
+    ext = '.' + file.name.rsplit('.', 1)[-1].lower() if '.' in file.name else ''
+    if ext not in ALLOWED_UPLOAD_EXTENSIONS:
+        allowed = ', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))
+        return f'"{field_name}": formato "{ext or "sem extensão"}" não permitido. Use: {allowed}.'
+    return None
+
+
 class UploadEstoqueView(APIView):
     """
     POST /api/upload/grade-020502/
-    
-    Upload de planilha de Grade 020502 (Estoque Total Diário).
-    
-    Form data:
-    - file: arquivo .xlsx, .xls ou .csv
-    - unidade_negocio_id: ID da unidade de negócio
-    
+
+    Recebe 3 planilhas simultâneas via multipart/form-data e executa o
+    cálculo de estoque gerencial FEFO Reverso via UploadFefoService.
+
+    Form data obrigatório:
+    - file_020502      : Grade 020502 (.xlsx, .xls ou .csv)
+    - file_020304      : Grade 020304 (.xlsx, .xls ou .csv)
+    - file_nri         : Planilha NRI  (.xlsx, .xls ou .csv)
+    - unidade_negocio_id : ID da unidade de negócio (int)
+
     Permissões RBAC:
-    - Apenas GERENTE pode fazer upload na sua unidade
-    
-    Registra histórico de upload em HistoricoUpload.
+    - Apenas GERENTE pode fazer upload na sua unidade.
+
+    Registra histórico de upload em HistoricoUpload com os nomes dos 3
+    arquivos concatenados e o número de SKUs atualizados.
     """
     permission_classes = [IsAuthenticated, CanManageUpload]
-    
+
     def post(self, request):
-        from .services import EstoqueImportService
-        
-        file = request.FILES.get('file')
+        from .upload_service import UploadFefoService
+
+        # ------------------------------------------------------------------
+        # 1. Coleta de parâmetros
+        # ------------------------------------------------------------------
+        file_020502 = request.FILES.get('file_020502')
+        file_020304 = request.FILES.get('file_020304')
+        file_nri    = request.FILES.get('file_nri')
         unidade_negocio_id = request.data.get('unidade_negocio_id')
-        
-        if not file:
-            return Response(
-                {'error': 'Arquivo não enviado'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
+
+        # ------------------------------------------------------------------
+        # 2. Validação de presença (falha rápida, lista todos os ausentes)
+        # ------------------------------------------------------------------
+        erros_presenca = {}
+        if not file_020502:
+            erros_presenca['file_020502'] = 'Arquivo obrigatório não enviado.'
+        if not file_020304:
+            erros_presenca['file_020304'] = 'Arquivo obrigatório não enviado.'
+        if not file_nri:
+            erros_presenca['file_nri'] = 'Arquivo obrigatório não enviado.'
         if not unidade_negocio_id:
+            erros_presenca['unidade_negocio_id'] = 'Campo obrigatório não informado.'
+
+        if erros_presenca:
             return Response(
-                {'error': 'Unidade de negócio não informada'},
+                {'errors': erros_presenca},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        # Verifica extensão do arquivo
-        allowed_extensions = ['.xlsx', '.xls', '.csv']
-        file_ext = '.' + file.name.split('.')[-1].lower()
-        if file_ext not in allowed_extensions:
+
+        # ------------------------------------------------------------------
+        # 3. Validação de extensões (coleta todos os erros antes de retornar)
+        # ------------------------------------------------------------------
+        erros_extensao = {}
+        for field, file in [
+            ('file_020502', file_020502),
+            ('file_020304', file_020304),
+            ('file_nri',    file_nri),
+        ]:
+            erro = _validar_extensao_arquivo(file, field)
+            if erro:
+                erros_extensao[field] = erro
+
+        if erros_extensao:
             return Response(
-                {'error': f'Formato não permitido. Use: {", ".join(allowed_extensions)}'},
+                {'errors': erros_extensao},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        # Verifica acesso à unidade
+
+        # ------------------------------------------------------------------
+        # 4. Validação de permissão de acesso à unidade
+        # ------------------------------------------------------------------
         user = request.user
+        try:
+            unidade_negocio_id_int = int(unidade_negocio_id)
+        except (ValueError, TypeError):
+            return Response(
+                {'errors': {'unidade_negocio_id': 'Valor inválido; esperado um inteiro.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         if not user.is_superuser:
-            if not user.tem_acesso_unidade(int(unidade_negocio_id)):
+            if not user.tem_acesso_unidade(unidade_negocio_id_int):
                 return Response(
-                    {'error': 'Sem permissão para esta unidade'},
+                    {'error': 'Sem permissão para esta unidade.'},
                     status=status.HTTP_403_FORBIDDEN
                 )
-        
+
+        # ------------------------------------------------------------------
+        # 5. Nome consolidado dos 3 arquivos (para HistoricoUpload)
+        # ------------------------------------------------------------------
+        nome_arquivos = ' | '.join([
+            file_020502.name,
+            file_020304.name,
+            file_nri.name,
+        ])
+
+        # ------------------------------------------------------------------
+        # 6. Processamento principal
+        # ------------------------------------------------------------------
         try:
-            unidade = UnidadeNegocio.objects.get(id=int(unidade_negocio_id))
-            service = EstoqueImportService(int(unidade_negocio_id))
-            result = service.processar_grade_020502(file)
-            
-            # Registra histórico de upload
-            linhas_processadas = result.get('linhas_processadas', 0)
-            if isinstance(linhas_processadas, dict):
-                linhas_processadas = linhas_processadas.get('total', 0)
-            
+            unidade = UnidadeNegocio.objects.get(id=unidade_negocio_id_int)
+
+            result = UploadFefoService.processar_estoque_fefo(
+                file_020502=file_020502,
+                file_020304=file_020304,
+                file_nri=file_nri,
+                unidade_negocio_id=unidade_negocio_id_int,
+            )
+
+            skus_atualizados = result.get('skus_atualizados', 0)
+
             HistoricoUpload.objects.create(
-                tipo_arquivo='GRADE',
+                tipo_arquivo='FEFO',
                 usuario=user,
                 unidade_negocio=unidade,
                 status='SUCESSO' if result.get('success') else 'ERRO',
-                linhas_processadas=linhas_processadas,
-                nome_arquivo=file.name,
-                mensagem_erro=result.get('error') if not result.get('success') else None
+                linhas_processadas=skus_atualizados,
+                nome_arquivo=nome_arquivos,
+                mensagem_erro=result.get('error') if not result.get('success') else None,
             )
-            
+
             if result.get('success'):
                 return Response(result, status=status.HTTP_200_OK)
             else:
                 return Response(result, status=status.HTTP_400_BAD_REQUEST)
-                
+
         except UnidadeNegocio.DoesNotExist:
             return Response(
-                {'error': 'Unidade de negócio não encontrada'},
+                {'error': 'Unidade de negócio não encontrada.'},
                 status=status.HTTP_404_NOT_FOUND
             )
         except Exception as e:
-            # Tenta registrar erro no histórico
+            # Tenta persistir o erro no histórico antes de propagar a resposta.
+            # O bloco interno tem try/except próprio para não mascarar o erro
+            # original caso o próprio save do histórico falhe.
             try:
-                unidade = UnidadeNegocio.objects.get(id=int(unidade_negocio_id))
+                unidade = UnidadeNegocio.objects.get(id=unidade_negocio_id_int)
                 HistoricoUpload.objects.create(
-                    tipo_arquivo='GRADE',
+                    tipo_arquivo='FEFO',
                     usuario=user,
                     unidade_negocio=unidade,
                     status='ERRO',
                     linhas_processadas=0,
-                    nome_arquivo=file.name if file else None,
-                    mensagem_erro=str(e)
+                    nome_arquivo=nome_arquivos,
+                    mensagem_erro=str(e),
                 )
-            except:
+            except Exception:
                 pass
-            
-            return Response(
-                {'error': f'Erro ao processar arquivo: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
 
-
-class UploadContagensView(APIView):
-    """
-    POST /api/upload/contagens/
-    
-    Upload de planilha de Contagens (Conciliação de Validades).
-    
-    Form data:
-    - file: arquivo .xlsx, .xls ou .csv
-    - unidade_negocio_id: ID da unidade de negócio
-    
-    Permissões RBAC:
-    - Apenas GERENTE pode fazer upload na sua unidade
-    
-    Registra histórico de upload em HistoricoUpload.
-    """
-    permission_classes = [IsAuthenticated, CanManageUpload]
-    
-    def post(self, request):
-        from .services import EstoqueImportService
-        
-        file = request.FILES.get('file')
-        unidade_negocio_id = request.data.get('unidade_negocio_id')
-        
-        if not file:
             return Response(
-                {'error': 'Arquivo não enviado'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        if not unidade_negocio_id:
-            return Response(
-                {'error': 'Unidade de negócio não informada'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Verifica extensão do arquivo
-        allowed_extensions = ['.xlsx', '.xls', '.csv']
-        file_ext = '.' + file.name.split('.')[-1].lower()
-        if file_ext not in allowed_extensions:
-            return Response(
-                {'error': f'Formato não permitido. Use: {", ".join(allowed_extensions)}'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Verifica acesso à unidade
-        user = request.user
-        if not user.is_superuser:
-            if not user.tem_acesso_unidade(int(unidade_negocio_id)):
-                return Response(
-                    {'error': 'Sem permissão para esta unidade'},
-                    status=status.HTTP_403_FORBIDDEN
-                )
-        
-        try:
-            unidade = UnidadeNegocio.objects.get(id=int(unidade_negocio_id))
-            service = EstoqueImportService(int(unidade_negocio_id))
-            result = service.processar_contagens(file)
-            
-            # Registra histórico de upload
-            linhas_processadas = result.get('linhas_processadas', 0)
-            if isinstance(linhas_processadas, dict):
-                linhas_processadas = linhas_processadas.get('total', 0)
-            
-            HistoricoUpload.objects.create(
-                tipo_arquivo='CONTAGEM',
-                usuario=user,
-                unidade_negocio=unidade,
-                status='SUCESSO' if result.get('success') else 'ERRO',
-                linhas_processadas=linhas_processadas,
-                nome_arquivo=file.name,
-                mensagem_erro=result.get('error') if not result.get('success') else None
-            )
-            
-            if result.get('success'):
-                return Response(result, status=status.HTTP_200_OK)
-            else:
-                return Response(result, status=status.HTTP_400_BAD_REQUEST)
-                
-        except UnidadeNegocio.DoesNotExist:
-            return Response(
-                {'error': 'Unidade de negócio não encontrada'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        except Exception as e:
-            # Tenta registrar erro no histórico
-            try:
-                unidade = UnidadeNegocio.objects.get(id=int(unidade_negocio_id))
-                HistoricoUpload.objects.create(
-                    tipo_arquivo='CONTAGEM',
-                    usuario=user,
-                    unidade_negocio=unidade,
-                    status='ERRO',
-                    linhas_processadas=0,
-                    nome_arquivo=file.name if file else None,
-                    mensagem_erro=str(e)
-                )
-            except:
-                pass
-            
-            return Response(
-                {'error': f'Erro ao processar arquivo: {str(e)}'},
+                {'error': f'Erro ao processar arquivos: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -1320,12 +1122,10 @@ class HistoricoUploadViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
             'unidade_negocio'
         )
         
-        # Filtra pela unidade ativa (se fornecido)
         unidade_id = self.get_unidade_ativa()
         if unidade_id:
             queryset = queryset.filter(unidade_negocio_id=unidade_id)
         else:
-            # Se não tiver unidade ativa, filtra pelas unidades do usuário
             unidades_ids = self.get_user_unidades()
             queryset = queryset.filter(unidade_negocio_id__in=unidades_ids)
         
@@ -1372,7 +1172,7 @@ class NotificacoesAlertaView(UnidadeAccessMixin, APIView):
     """
     GET /api/notificacoes/
     
-    Retorna lista de lotes em estado de alerta (Pré-Bloqueio, Bloqueado, Extremamente Crítico).
+    Retorna lista de SKUs em estado de alerta (Pré-Bloqueio, Bloqueado, Extremamente Crítico).
     
     Query Params:
     - unidade_id: ID da unidade de negócio (obrigatório)
@@ -1382,7 +1182,6 @@ class NotificacoesAlertaView(UnidadeAccessMixin, APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
-        # Validar unidade_id
         unidade_id = self.get_unidade_ativa()
         if unidade_id is None:
             return Response(
@@ -1390,7 +1189,6 @@ class NotificacoesAlertaView(UnidadeAccessMixin, APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Buscar configuração da unidade
         try:
             unidade = UnidadeNegocio.objects.get(id=unidade_id, ativo=True)
         except UnidadeNegocio.DoesNotExist:
@@ -1406,38 +1204,31 @@ class NotificacoesAlertaView(UnidadeAccessMixin, APIView):
                 ativo=True
             ).first()
         
-        # Valores de dias para cada faixa
         dias_pre_bloqueio = config.dias_pre_bloqueio if config else 60
         dias_bloqueado = config.dias_bloqueado if config else 30
         dias_extremamente_critico = config.dias_extremamente_critico if config else 7
         
         hoje = date.today()
         
-        # Buscar lotes com validade dentro das faixas de alerta
-        # Lotes com data_validade <= hoje + dias_pre_bloqueio e data_validade >= hoje
         from datetime import timedelta
         data_limite_pre_bloqueio = hoje + timedelta(days=dias_pre_bloqueio)
         
-        lotes_alerta = LoteValidade.objects.filter(
+        # Busca SKUs com estoque e validade_inicio_range dentro da janela de alerta.
+        # Exclui vencidos (data < hoje) — notificações são apenas para itens ainda válidos
+        # mas dentro de alguma faixa crítica.
+        skus_alerta = SKU.objects.filter(
             ativo=True,
-            qtd_estoque__gt=0,
-            sku__unidade_negocio_id=unidade_id,
-            data_validade__isnull=False,
-            data_validade__gte=hoje,  # Não vencidos
-            data_validade__lte=data_limite_pre_bloqueio,  # Dentro do período de alerta
-        ).exclude(
-            numero_lote='BASE'  # Exclui lote base
-        ).select_related(
-            'sku',
-            'sku__unidade_negocio'
-        ).order_by('data_validade')
+            qtd_disponivel_venda__gt=0,
+            unidade_negocio_id=unidade_id,
+            validade_inicio_range__isnull=False,
+            validade_inicio_range__gte=hoje,
+            validade_inicio_range__lte=data_limite_pre_bloqueio,
+        ).select_related('unidade_negocio').order_by('validade_inicio_range')
         
-        # Montar resposta com status calculado
         notificacoes = []
-        for lote in lotes_alerta:
-            dias_restantes = (lote.data_validade - hoje).days
+        for sku in skus_alerta:
+            dias_restantes = (sku.validade_inicio_range - hoje).days
             
-            # Determinar status baseado nos dias
             if dias_restantes <= dias_extremamente_critico:
                 status_val = 'EXTREMAMENTE_CRITICO'
             elif dias_restantes <= dias_bloqueado:
@@ -1446,14 +1237,12 @@ class NotificacoesAlertaView(UnidadeAccessMixin, APIView):
                 status_val = 'PRE_BLOQUEIO'
             
             notificacoes.append({
-                'lote_id': lote.id,
-                'sku_id': lote.sku.id,
-                'sku_codigo': lote.sku.codigo_sku,
-                'sku_nome': lote.sku.nome_produto,
-                'numero_lote': lote.numero_lote,
-                'data_validade': lote.data_validade,
+                'sku_id': sku.id,
+                'sku_codigo': sku.codigo_sku,
+                'sku_nome': sku.nome_produto,
+                'data_validade': sku.validade_inicio_range,
                 'dias_restantes': dias_restantes,
-                'qtd_estoque': lote.qtd_estoque,
+                'qtd_estoque': sku.qtd_disponivel_venda,
                 'status': status_val,
                 'status_label': STATUS_LABELS.get(status_val, 'Indefinido'),
                 'status_cor': STATUS_CORES.get(status_val, '#9E9E9E'),
@@ -1462,11 +1251,10 @@ class NotificacoesAlertaView(UnidadeAccessMixin, APIView):
                 'unidade_nome': unidade.nome,
             })
         
-        # Resumo por status
         resumo = {
-            'extremamente_critico': len([n for n in notificacoes if n['status'] == 'EXTREMAMENTE_CRITICO']),
-            'bloqueado': len([n for n in notificacoes if n['status'] == 'BLOQUEADO']),
-            'pre_bloqueio': len([n for n in notificacoes if n['status'] == 'PRE_BLOQUEIO']),
+            'extremamente_critico': sum(1 for n in notificacoes if n['status'] == 'EXTREMAMENTE_CRITICO'),
+            'bloqueado': sum(1 for n in notificacoes if n['status'] == 'BLOQUEADO'),
+            'pre_bloqueio': sum(1 for n in notificacoes if n['status'] == 'PRE_BLOQUEIO'),
             'total': len(notificacoes),
         }
         
