@@ -8,29 +8,36 @@ from core.models import SKU, UnidadeNegocio
 
 logger = logging.getLogger(__name__)
 
-def parse_disponivel(disponivel_str: str, fator_conversao: int) -> int:
+def parse_disponivel(disponivel_str, fator_conversao: int) -> int:
     """
-    Converte a string "Caixas/Unidades" para Unidades Base.
-    Ex: '10/05' com fator=24 -> (10 * 24) + 5 = 245
+    Converte a string "Caixas/Unidades" para Unidades Base com proteção para floats.
     """
-    if pd.isna(disponivel_str) or not str(disponivel_str).strip():
+    if pd.isna(disponivel_str):
         return 0
     
-    disponivel_str = str(disponivel_str).replace('.', '').strip()
+    # Se o Pandas já leu como número puro (int ou float)
+    if isinstance(disponivel_str, (int, float)):
+        return int(disponivel_str)
+        
+    disponivel_str = str(disponivel_str).strip()
+    if not disponivel_str:
+        return 0
     
     if '/' in disponivel_str:
         partes = disponivel_str.split('/')
         try:
-            caixas = int(partes[0])
+            caixas = int(partes[0].replace('.', ''))
             unidades = int(partes[1])
             return caixas * (fator_conversao or 1) + unidades
         except ValueError:
             return 0
     else:
         try:
-            return int(disponivel_str)
+            # Primeiro tenta converter direto (Lida com casos como '12.0')
+            return int(float(disponivel_str))
         except ValueError:
-            return 0
+            # Fallback para string formatada de milhares (ex: '1.234')
+            return int(disponivel_str.replace('.', ''))
 
 
 class UploadFefoService:
@@ -53,12 +60,30 @@ class UploadFefoService:
         except Exception as e:
             raise ValueError(f"Erro ao ler os arquivos: {e}")
 
-        # Normaliza as chaves removendo `.0` em casos de int convertido para float
-        df_020502['Produto_clean'] = df_020502.get('Produto', pd.Series()).astype(str).str.replace(r'\.0$', '', regex=True)
-        df_020304['Cod_clean'] = df_020304.get('Cod', pd.Series()).astype(str).str.replace(r'\.0$', '', regex=True)
-        df_nri['Codigo_clean'] = df_nri.get('Código Produto', pd.Series()).astype(str).str.replace(r'\.0$', '', regex=True)
+        # =====================================================================
+        # INÍCIO DO FILTRO SALVA-VIDAS (Proteção contra formatações do SAP)
+        # =====================================================================
+        
+        # 1. Limpar espaços fantasmas nos nomes das colunas
+        df_020502.columns = df_020502.columns.str.strip()
+        df_020304.columns = df_020304.columns.str.strip()
+        df_nri.columns = df_nri.columns.str.strip()
 
-        # Tratar o NRI - CORREÇÃO CRÍTICA: dayfirst=True para padrão Brasil
+        # 2. Busca dinâmica das colunas para evitar falhas se o nome mudar ligeiramente
+        col_prod_020502 = next((c for c in df_020502.columns if c.lower() in ['produto', 'material', 'cod']), 'Produto')
+        col_cod_020304 = next((c for c in df_020304.columns if c.lower() in ['cod', 'material', 'produto']), 'Cod')
+        col_cod_nri = next((c for c in df_nri.columns if c.lower() in ['código produto', 'codigo', 'material']), 'Código Produto')
+
+        # 3. Limpeza Extrema: Remove '.0', remove zeros à esquerda e espaços (ex: "0002538 " -> "2538")
+        df_020502['Produto_clean'] = df_020502.get(col_prod_020502, pd.Series()).astype(str).str.replace(r'\.0$', '', regex=True).str.lstrip('0').str.strip()
+        df_020304['Cod_clean'] = df_020304.get(col_cod_020304, pd.Series()).astype(str).str.replace(r'\.0$', '', regex=True).str.lstrip('0').str.strip()
+        df_nri['Codigo_clean'] = df_nri.get(col_cod_nri, pd.Series()).astype(str).str.replace(r'\.0$', '', regex=True).str.lstrip('0').str.strip()
+        
+        # =====================================================================
+        # FIM DO FILTRO SALVA-VIDAS
+        # =====================================================================
+
+        # Tratar o NRI
         if 'Data Validade' in df_nri.columns:
             df_nri['Data Validade'] = pd.to_datetime(df_nri['Data Validade'], dayfirst=True, errors='coerce')
         if 'Quantidade' in df_nri.columns:
@@ -119,7 +144,6 @@ class UploadFefoService:
                 qtd_queimada = sum_nri - qtd_disponivel
 
                 if qtd_queimada < 0:
-                    # O estoque real é maior que o histórico do NRI (Falha/Cego)
                     validade_inicio = df_nri_item.iloc[0]['Data Validade'].date()
                     validade_fim = df_nri_item.iloc[-1]['Data Validade'].date()
                 else:
@@ -127,7 +151,6 @@ class UploadFefoService:
                         qtd_linha = row_nri['Quantidade']
                         qtd_queimada -= qtd_linha
                         
-                        # CORREÇÃO CRÍTICA: Estritamente menor que 0
                         if qtd_queimada < 0 and validade_inicio is None:
                             validade_inicio = row_nri['Data Validade'].date()
                             
@@ -155,7 +178,6 @@ class UploadFefoService:
 
     @staticmethod
     def _read_file(file) -> pd.DataFrame:
-        """Lê arquivo e suporta CSV listando múltiplos encodings/separadores."""
         filename = file.name.lower()
         if filename.endswith('.csv'):
             for encoding in ['utf-8', 'latin-1', 'cp1252']:
@@ -163,7 +185,7 @@ class UploadFefoService:
                     try:
                         file.seek(0)
                         df = pd.read_csv(file, encoding=encoding, sep=sep)
-                        if len(df.columns) > 1: # Garante que encontrou o separador certo
+                        if len(df.columns) > 1:
                             return df
                     except Exception:
                         continue
