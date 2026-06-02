@@ -322,8 +322,6 @@ class SKUListSerializer(serializers.ModelSerializer):
     )
     status_texto = serializers.SerializerMethodField()
     status_cor = serializers.SerializerMethodField()
-    quantidade_unidade = serializers.SerializerMethodField()
-    valor_estoque = serializers.SerializerMethodField()
     imagem_url = serializers.SerializerMethodField()
     
     class Meta:
@@ -337,12 +335,15 @@ class SKUListSerializer(serializers.ModelSerializer):
             'unidade_medida',
             'status_texto',
             'status_cor',
+            # Novos campos do FEFO:
             'qtd_total_020502',
-            'quantidade_unidade',
-            'valor_estoque',
+            'qtd_buffer_020304',
+            'qtd_disponivel_venda',
+            'validade_inicio_range',
+            'validade_fim_range',
             'imagem_url',
         ]
-    
+        
     def get_status_texto(self, obj) -> str:
         status_info = obj.get_status()
         status = status_info.get('status', 'SEM_ESTOQUE')
@@ -352,16 +353,6 @@ class SKUListSerializer(serializers.ModelSerializer):
         status_info = obj.get_status()
         status = status_info.get('status', 'SEM_ESTOQUE')
         return STATUS_CORES.get(status, '#9E9E9E')
-    
-    def get_quantidade_unidade(self, obj) -> int:
-        """Quantidade na unidade de medida do SKU (ex: caixas)."""
-        total = obj.qtd_total_020502
-        fator = obj.fator_conversao or 1
-        return total // fator if fator > 0 else total
-    
-    def get_valor_estoque(self, obj) -> float:
-        """Retorna o valor total do estoque (qtd * custo)."""
-        return obj.valor_total_estoque
     
     def get_imagem_url(self, obj) -> str | None:
         if obj.imagem:
@@ -424,9 +415,7 @@ class SKUCriticidadeSerializer(serializers.ModelSerializer):
         source='unidade_negocio.codigo_unb',
         read_only=True
     )
-    data_validade = serializers.SerializerMethodField()
     dias_restantes = serializers.SerializerMethodField()
-    quantidade = serializers.SerializerMethodField()
     status_texto = serializers.SerializerMethodField()
     status_cor = serializers.SerializerMethodField()
     imagem_url = serializers.SerializerMethodField()
@@ -438,23 +427,18 @@ class SKUCriticidadeSerializer(serializers.ModelSerializer):
             'codigo_sku',
             'nome_produto',
             'unidade_codigo',
-            'data_validade',
+            'validade_inicio_range', # FEFO
+            'validade_fim_range',    # FEFO
             'dias_restantes',
-            'quantidade',
+            'qtd_disponivel_venda',  # FEFO (antigo 'quantidade')
             'status_texto',
             'status_cor',
             'imagem_url',
         ]
     
-    def get_data_validade(self, obj) -> str | None:
-        return obj.validade_inicio_range.isoformat() if obj.validade_inicio_range else None
-    
     def get_dias_restantes(self, obj) -> int | None:
         status_info = obj.get_status()
         return status_info.get('dias_restantes')
-    
-    def get_quantidade(self, obj) -> int:
-        return obj.qtd_disponivel_venda
     
     def get_status_texto(self, obj) -> str:
         status_info = obj.get_status()
