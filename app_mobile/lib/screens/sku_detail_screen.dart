@@ -255,7 +255,7 @@ class _SkuDetailScreenState extends State<SkuDetailScreen>
                   child: _buildInfoTile(
                     Icons.inventory,
                     'Disp. Venda',
-                    '${sku.qtdDisponivelVenda}',
+                    sku.formatarQuantidade(sku.qtdDisponivelVenda),
                     AppColors.success,
                   ),
                 ),
@@ -448,7 +448,7 @@ class _SkuDetailScreenState extends State<SkuDetailScreen>
                   // Disponível para Venda
                   _buildEstoqueRow(
                     'Disponível para Venda', 
-                    sku.qtdDisponivelVenda.toString(), 
+                    sku.formatarQuantidade(sku.qtdDisponivelVenda), 
                     AppColors.success,
                     isBold: true,
                   ),

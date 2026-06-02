@@ -168,18 +168,22 @@ class Sku {
   }
 
   String formatarQuantidade(int quantidadeRaw) {
-    if (fatorConversao == null || fatorConversao! <= 1) {
+    String sigla = unidadeMedida ?? 'CX';
+
+    // Se o fator for 1 ou a unidade já for UN, mostra apenas o total direto
+    if (fatorConversao == null || fatorConversao! <= 1 || sigla.toUpperCase() == 'UN') {
       return '$quantidadeRaw UN';
     }
     
-    int caixas = quantidadeRaw ~/ fatorConversao!; // Divisão inteira
-    int sobra = quantidadeRaw % fatorConversao!;   // Resto da divisão
+    int caixas = quantidadeRaw ~/ fatorConversao!; // A divisão inteira (pode ser CX, DZ, FD)
+    int sobra = quantidadeRaw % fatorConversao!;   // O resto sempre será em unidades (UN)
     
-    String sigla = unidadeMedida ?? 'CX';
-    
+    // Se a divisão for exata, não mostra a "sobra"
     if (sobra == 0) {
-      return '$caixas $sigla';
+      return '$caixas $sigla (Total: $quantidadeRaw un)';
     }
-    return '$caixas $sigla e $sobra UN';
+    
+    // Se houver unidades soltas, mostra a quebra completa
+    return '$caixas $sigla e $sobra UN (Total: $quantidadeRaw un)';
   }
 }

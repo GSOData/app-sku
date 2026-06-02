@@ -568,16 +568,19 @@ class _SkuListScreenState extends State<SkuListScreen> {
                         // Ícone da unidade de medida
                         _getUnidadeMedidaIcon(sku.unidadeMedida, size: 14),
                         const SizedBox(width: 4),
-                        Text(
-                          'Qtd: ${sku.qtdDisponivelVenda} ${sku.unidadeMedida ?? ''}',
-                          style: GoogleFonts.poppins(
-                            fontSize: AppFontSizes.caption,
-                            color: AppColors.textSecondary,
+                        // AQUI ESTÁ A MUDANÇA:
+                        Expanded( // Dica de UI: Coloque um Expanded aqui para evitar estouro de tela (overflow) com textos longos
+                          child: Text(
+                            'Qtd: ${sku.formatarQuantidade(sku.qtdDisponivelVenda)}',
+                            style: GoogleFonts.poppins(
+                              fontSize: AppFontSizes.caption,
+                              color: AppColors.textSecondary,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        
                         const SizedBox(width: AppSpacing.md),
-
+                        
                         // Dias restantes
                         if (sku.statusDiasRestantes != null) ...[
                           Icon(
