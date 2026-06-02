@@ -15,7 +15,6 @@ def parse_disponivel(disponivel_str, fator_conversao: int) -> int:
     if pd.isna(disponivel_str):
         return 0
     
-    # Se o Pandas já leu como número puro (int ou float)
     if isinstance(disponivel_str, (int, float)):
         return int(disponivel_str)
         
@@ -33,10 +32,8 @@ def parse_disponivel(disponivel_str, fator_conversao: int) -> int:
             return 0
     else:
         try:
-            # Primeiro tenta converter direto (Lida com casos como '12.0')
             return int(float(disponivel_str))
         except ValueError:
-            # Fallback para string formatada de milhares (ex: '1.234')
             return int(disponivel_str.replace('.', ''))
 
 
@@ -44,15 +41,12 @@ class UploadFefoService:
     @staticmethod
     @transaction.atomic
     def processar_estoque_fefo(file_020502, file_020304, file_nri, unidade_negocio_id: int):
-        """
-        Processa os relatórios de estoque usando a lógica FEFO Reverso.
-        """
         try:
             unidade = UnidadeNegocio.objects.get(id=unidade_negocio_id)
         except UnidadeNegocio.DoesNotExist:
             raise ValueError("Unidade de negócio não encontrada.")
 
-        # Passo A: Leitura e Preparação
+        # Passo A: Leitura
         try:
             df_020502 = UploadFefoService._read_file(file_020502)
             df_020304 = UploadFefoService._read_file(file_020304)
@@ -60,58 +54,75 @@ class UploadFefoService:
         except Exception as e:
             raise ValueError(f"Erro ao ler os arquivos: {e}")
 
-        # =====================================================================
-        # INÍCIO DO FILTRO SALVA-VIDAS (Proteção contra formatações do SAP)
-        # =====================================================================
-        
-        # 1. Limpar espaços fantasmas nos nomes das colunas
+        # Filtro Salva-Vidas (Tratamento de Colunas SAP)
         df_020502.columns = df_020502.columns.str.strip()
         df_020304.columns = df_020304.columns.str.strip()
         df_nri.columns = df_nri.columns.str.strip()
 
-        # 2. Busca dinâmica das colunas para evitar falhas se o nome mudar ligeiramente
         col_prod_020502 = next((c for c in df_020502.columns if c.lower() in ['produto', 'material', 'cod']), 'Produto')
         col_cod_020304 = next((c for c in df_020304.columns if c.lower() in ['cod', 'material', 'produto']), 'Cod')
         col_cod_nri = next((c for c in df_nri.columns if c.lower() in ['código produto', 'codigo', 'material']), 'Código Produto')
+        
+        # Encontrar a coluna de descrição do produto para auto-cadastro
+        col_desc_020502 = next((c for c in df_020502.columns if c.lower() in ['descrição', 'descricao', 'nome', 'texto', 'material_desc']), None)
 
-        # 3. Limpeza Extrema: Remove '.0', remove zeros à esquerda e espaços (ex: "0002538 " -> "2538")
         df_020502['Produto_clean'] = df_020502.get(col_prod_020502, pd.Series()).astype(str).str.replace(r'\.0$', '', regex=True).str.lstrip('0').str.strip()
         df_020304['Cod_clean'] = df_020304.get(col_cod_020304, pd.Series()).astype(str).str.replace(r'\.0$', '', regex=True).str.lstrip('0').str.strip()
         df_nri['Codigo_clean'] = df_nri.get(col_cod_nri, pd.Series()).astype(str).str.replace(r'\.0$', '', regex=True).str.lstrip('0').str.strip()
         
-        # =====================================================================
-        # FIM DO FILTRO SALVA-VIDAS
-        # =====================================================================
-
-        # Tratar o NRI
         if 'Data Validade' in df_nri.columns:
             df_nri['Data Validade'] = pd.to_datetime(df_nri['Data Validade'], dayfirst=True, errors='coerce')
         if 'Quantidade' in df_nri.columns:
             df_nri['Quantidade'] = pd.to_numeric(df_nri['Quantidade'], errors='coerce').fillna(0)
 
-        # Obter todos os SKUs da unidade de negócio para rápido acesso
+        # ==============================================================================
+        # NOVIDADE 1: A "Zona de Perigo" Automática
+        # Zera os estoques e validades de todos os produtos antes de começar.
+        # Assim você NUNCA MAIS precisa limpar o banco manualmente!
+        # ==============================================================================
+        SKU.objects.filter(unidade_negocio=unidade).update(
+            qtd_total_020502=0,
+            qtd_buffer_020304=0,
+            qtd_disponivel_venda=0,
+            validade_inicio_range=None,
+            validade_fim_range=None
+        )
+
         skus_dict = {
             sku.codigo_sku: sku
-            for sku in SKU.objects.filter(unidade_negocio=unidade, ativo=True)
+            for sku in SKU.objects.filter(unidade_negocio=unidade)
         }
         
         skus_to_update = []
 
-        # Usar df_020502 como fonte de verdade para o que existe de SKU agora
         for idx, row_020502 in df_020502.iterrows():
             cod_sku = row_020502.get('Produto_clean')
             if not cod_sku or pd.isna(cod_sku) or cod_sku.lower() == 'nan':
                 continue
 
             sku = skus_dict.get(cod_sku)
+            
+            # ==============================================================================
+            # NOVIDADE 2: Auto-Cadastro de SKUs
+            # Se o sistema não conhecer o produto, ele cria na hora!
+            # ==============================================================================
             if not sku:
-                continue
+                nome_prod = str(row_020502.get(col_desc_020502, f"SKU {cod_sku}")) if col_desc_020502 else f"SKU {cod_sku}"
+                sku = SKU.objects.create(
+                    codigo_sku=cod_sku,
+                    nome_produto=nome_prod[:255],
+                    unidade_negocio=unidade,
+                    fator_conversao=1, # Padrão seguro para evitar erro de divisão
+                    unidade_medida='UN',
+                    categoria='A CLASSIFICAR',
+                    ativo=True
+                )
+                skus_dict[cod_sku] = sku # Guarda no dicionário para acelerar
 
             # Passo B: Matemática Gerencial
             str_disponivel = row_020502.get('Disponivel', '0/0')
             qtd_total = parse_disponivel(str_disponivel, sku.fator_conversao)
 
-            # Buscar quantidade no 020304
             row_020304 = df_020304[df_020304['Cod_clean'] == cod_sku]
             qtd_buffer = 0
             if not row_020304.empty:
@@ -122,7 +133,6 @@ class UploadFefoService:
 
             qtd_disponivel = qtd_total - qtd_buffer
             
-            # Se não há estoque disponível, zera as datas
             if qtd_disponivel <= 0:
                 sku.qtd_total_020502 = qtd_total
                 sku.qtd_buffer_020304 = qtd_buffer
