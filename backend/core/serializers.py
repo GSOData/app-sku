@@ -342,6 +342,7 @@ class SKUListSerializer(serializers.ModelSerializer):
             'validade_inicio_range',
             'validade_fim_range',
             'imagem_url',
+            'fator_conversao',
         ]
         
     def get_status_texto(self, obj) -> str:
@@ -434,6 +435,7 @@ class SKUCriticidadeSerializer(serializers.ModelSerializer):
             'status_texto',
             'status_cor',
             'imagem_url',
+            'fator_conversao',
         ]
     
     def get_dias_restantes(self, obj) -> int | None:

@@ -166,4 +166,20 @@ class Sku {
 
     return '$inicio até $fim';
   }
+
+  String formatarQuantidade(int quantidadeRaw) {
+    if (fatorConversao == null || fatorConversao! <= 1) {
+      return '$quantidadeRaw UN';
+    }
+    
+    int caixas = quantidadeRaw ~/ fatorConversao!; // Divisão inteira
+    int sobra = quantidadeRaw % fatorConversao!;   // Resto da divisão
+    
+    String sigla = unidadeMedida ?? 'CX';
+    
+    if (sobra == 0) {
+      return '$caixas $sigla';
+    }
+    return '$caixas $sigla e $sobra UN';
+  }
 }
