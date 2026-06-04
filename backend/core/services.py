@@ -52,7 +52,7 @@ REGRAS_CATEGORIA = {
         'BALLANTINES', 'PIRASSUNUNGA', 'PASSPORT', 'DOMECQ', 'PITU', 'WHISKY'
     ],
     'VINHO': [
-        'QUINTA DO MORGADO', 'VINHO'
+        'QUINTA DO MORGADO', 'VINHO', 'CASILLERO'
     ],
     'DOCES': [
         'TRIDENT', 'HALLS', 'CHICLETE'
