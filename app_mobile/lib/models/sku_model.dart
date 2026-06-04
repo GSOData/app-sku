@@ -168,22 +168,22 @@ class Sku {
   }
 
   String formatarQuantidade(int quantidadeRaw) {
-    String sigla = unidadeMedida ?? 'CX';
+    String sigla = (unidadeMedida ?? 'UN').toUpperCase();
 
-    // Se o fator for 1 ou a unidade já for UN, mostra apenas o total direto
-    if (fatorConversao == null || fatorConversao! <= 1 || sigla.toUpperCase() == 'UN') {
-      return '$quantidadeRaw UN';
+    // REGRA 1: Produtos vendidos naturalmente em unidades (ex: garrafas soltas)
+    if (fatorConversao == null || fatorConversao! <= 1 || sigla == 'UN') {
+      String totalStr = quantidadeRaw.toString().replaceAllMapped(
+          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.');
+      return '$totalStr UN';
     }
     
-    int caixas = quantidadeRaw ~/ fatorConversao!; // A divisão inteira (pode ser CX, DZ, FD)
-    int sobra = quantidadeRaw % fatorConversao!;   // O resto sempre será em unidades (UN)
+    // REGRA 2: Produtos em Caixa, Dúzia, Fardo, etc. (Ignora as unidades quebradas)
+    int caixas = quantidadeRaw ~/ fatorConversao!; 
+
+    // Coloca ponto nos milhares (ex: 2445 -> 2.445)
+    String caixasStr = caixas.toString().replaceAllMapped(
+        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.');
     
-    // Se a divisão for exata, não mostra a "sobra"
-    if (sobra == 0) {
-      return '$caixas $sigla (Total: $quantidadeRaw un)';
-    }
-    
-    // Se houver unidades soltas, mostra a quebra completa
-    return '$caixas $sigla e $sobra UN (Total: $quantidadeRaw un)';
+    return '$caixasStr $sigla';
   }
 }

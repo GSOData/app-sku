@@ -316,15 +316,23 @@ class _SkuDetailScreenState extends State<SkuDetailScreen>
 
   Widget _buildInfoTile(IconData icon, String label, String value, Color color) {
     return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Icon(icon, color: color, size: 28),
         const SizedBox(height: AppSpacing.xs),
-        Text(
-          value,
-          style: GoogleFonts.poppins(
-            fontSize: AppFontSizes.title,
-            fontWeight: FontWeight.bold,
-            color: color,
+        SizedBox(
+          height: 32, // Fixa a altura máxima
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.center,
+            child: Text(
+              value,
+              style: GoogleFonts.poppins(
+                fontSize: AppFontSizes.title,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
           ),
         ),
         Text(
@@ -334,6 +342,8 @@ class _SkuDetailScreenState extends State<SkuDetailScreen>
             color: AppColors.textSecondary,
           ),
           textAlign: TextAlign.center,
+          maxLines: 1, // Impede que o título do quadradinho quebre
+          overflow: TextOverflow.ellipsis,
         ),
       ],
     );
@@ -362,7 +372,13 @@ class _SkuDetailScreenState extends State<SkuDetailScreen>
   // --- NOVA ABA GERENCIAL (Substitui Lotes) ---
   Widget _buildValidadeEstoqueTab(Sku sku) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppSpacing.md),
+      // Padding extra no bottom para a barra não cortar o conteúdo
+      padding: const EdgeInsets.only(
+        left: AppSpacing.md,
+        right: AppSpacing.md,
+        top: AppSpacing.md,
+        bottom: 100.0,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -464,21 +480,30 @@ class _SkuDetailScreenState extends State<SkuDetailScreen>
   Widget _buildEstoqueRow(String label, String value, Color valueColor, {bool isBold = false}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label, 
-          style: GoogleFonts.poppins(
-            color: AppColors.textSecondary, 
-            fontSize: AppFontSizes.body
-          )
+        Expanded(
+          flex: 2,
+          child: Text(
+            label, 
+            style: GoogleFonts.poppins(
+              color: AppColors.textSecondary, 
+              fontSize: AppFontSizes.body
+            )
+          ),
         ),
-        Text(
-          value, 
-          style: GoogleFonts.poppins(
-            color: valueColor, 
-            fontSize: isBold ? AppFontSizes.title : AppFontSizes.body, 
-            fontWeight: isBold ? FontWeight.bold : FontWeight.w600
-          )
+        const SizedBox(width: 8),
+        Expanded(
+          flex: 3,
+          child: Text(
+            value, 
+            textAlign: TextAlign.right,
+            style: GoogleFonts.poppins(
+              color: valueColor, 
+              fontSize: isBold ? AppFontSizes.title : AppFontSizes.body, 
+              fontWeight: isBold ? FontWeight.bold : FontWeight.w600
+            )
+          ),
         ),
       ],
     );
@@ -486,7 +511,13 @@ class _SkuDetailScreenState extends State<SkuDetailScreen>
 
   Widget _buildInfoTab(Sku sku) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppSpacing.md),
+      // Padding extra no bottom para a barra não cortar o conteúdo
+      padding: const EdgeInsets.only(
+        left: AppSpacing.md,
+        right: AppSpacing.md,
+        top: AppSpacing.md,
+        bottom: 100.0,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
