@@ -67,8 +67,8 @@ REGRAS_CATEGORIA = {
 
 # Ordem de verificação (ICE E MISTAS antes de DESTILADO para evitar conflitos)
 ORDEM_CATEGORIAS = [
-    'BEATS', 'ICE E MISTAS', 'ÁGUA', 'SUCO',
-    'ISOTÔNICO', 'ENERGÉTICO', 'DESTILADO', 'VINHO', 
+    'BEATS', 'ICE E MISTAS', 'ÁGUA',
+    'ISOTÔNICO', 'SUCO', 'ENERGÉTICO', 'DESTILADO', 'VINHO', 
     'DOCES', 'LIMPEZA', 'REFRIGERANTE', 'OUTROS', 'CERVEJA'
 ]
 
