@@ -37,7 +37,7 @@ REGRAS_CATEGORIA = {
 ORDEM_CATEGORIAS = [
     'BEATS', 'ICE E MISTAS', 'ÁGUA', 'SUCO',
     'ISOTÔNICO', 'ENERGÉTICO', 'DESTILADO', 'VINHO', 
-    'DOCES', 'LIMPEZA', 'REFRIGERANTE', 'CERVEJA', 'OUTROS'
+    'DOCES', 'LIMPEZA', 'REFRIGERANTE', 'OUTROS', 'CERVEJA'
 ]
 
 def parse_disponivel(disponivel_str, fator_conversao: int) -> int:
