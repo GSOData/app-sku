@@ -194,7 +194,6 @@ class UsuarioUnidade(models.Model):
     Tabela intermediária para relacionamento Usuario-UnidadeNegocio.
     Permite adicionar campos extras como papel/função na unidade.
     """
-    # Choices de papéis atualizados conforme RBAC
     PAPEL_CHOICES = [
         ('VENDEDOR', 'Vendedor'),      # Somente leitura
         ('GERENTE', 'Gerente'),        # CRUD completo na unidade
@@ -236,13 +235,6 @@ class ConfiguracaoAlerta(BaseModel):
     """
     Configurações de alertas de validade.
     Pode ser global (unidade=null) ou específica por unidade.
-    
-    Regras de status (NOVAS):
-    - Vencido: data_validade < hoje
-    - Extremamente Crítico: (data_validade - hoje) <= dias_extremamente_critico (padrão: 7 dias)
-    - Bloqueado: entre dias_extremamente_critico+1 e dias_bloqueado (8-30 dias)
-    - Pré-Bloqueio: entre dias_bloqueado+1 e dias_pre_bloqueio (31-60 dias)
-    - OK: acima de dias_pre_bloqueio
     """
     unidade = models.OneToOneField(
         UnidadeNegocio,
@@ -416,14 +408,24 @@ class SKU(BaseModel):
 
     def get_status(self, config: 'ConfiguracaoAlerta' = None) -> dict:
         """
-        Calcula o status do SKU baseado no field `validade_inicio_range` (A data mais curta, FEFO reverso).
+        Calcula o status do SKU baseado no field `validade_inicio_range`.
         """
+        # ==============================================================================
+        # CORREÇÃO: ITENS SEM VALIDADE MAS COM ESTOQUE (Ex: Destilados novos)
+        # ==============================================================================
         if not self.validade_inicio_range:
-            return {
-                'status': 'SEM_ESTOQUE',
-                'cor': 'cinza',
-                'dias_restantes': None,
-            }
+            if self.qtd_disponivel_venda > 0:
+                return {
+                    'status': 'OK',
+                    'cor': 'verde',
+                    'dias_restantes': None,
+                }
+            else:
+                return {
+                    'status': 'SEM_ESTOQUE',
+                    'cor': 'cinza',
+                    'dias_restantes': None,
+                }
 
         # Busca configuração específica da unidade ou global
         if config is None:
@@ -438,7 +440,7 @@ class SKU(BaseModel):
                     ativo=True
                 ).first()
         
-        # Valores padrão se não houver configuração (NOVOS DEFAULTS)
+        # Valores padrão se não houver configuração
         dias_pre_bloqueio = config.dias_pre_bloqueio if config else 60
         dias_bloqueado = config.dias_bloqueado if config else 30
         dias_extremamente_critico = config.dias_extremamente_critico if config else 7
@@ -476,6 +478,7 @@ class SKU(BaseModel):
                 'cor': 'verde',
                 'dias_restantes': dias_restantes,
             }
+
 
 class MovimentacaoEstoque(BaseModel):
     """

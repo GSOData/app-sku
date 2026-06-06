@@ -428,14 +428,15 @@ class SKUCriticidadeSerializer(serializers.ModelSerializer):
             'codigo_sku',
             'nome_produto',
             'unidade_codigo',
-            'validade_inicio_range', # FEFO
-            'validade_fim_range',    # FEFO
+            'unidade_medida',        # <--- ADICIONADO AQUI PARA O FLUTTER!
+            'fator_conversao',       # (Já estava aqui, perfeito)
+            'validade_inicio_range', 
+            'validade_fim_range',    
             'dias_restantes',
-            'qtd_disponivel_venda',  # FEFO (antigo 'quantidade')
+            'qtd_disponivel_venda',  
             'status_texto',
             'status_cor',
             'imagem_url',
-            'fator_conversao',
         ]
     
     def get_dias_restantes(self, obj) -> int | None:
