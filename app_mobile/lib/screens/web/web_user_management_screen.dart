@@ -7,7 +7,7 @@ import '../../widgets/web_navigation_menu.dart';
 import '../../services/auth_service.dart';
 import '../../services/user_service.dart';
 
-/// Tela de Gerenciamento de Usuários (Web)
+/// Tela de Gerenciamento de Usuários (Web e Mobile)
 class WebUserManagementScreen extends StatefulWidget {
   const WebUserManagementScreen({super.key});
 
@@ -91,7 +91,6 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
 
   /// Body mobile com FAB usando Stack
   Widget _buildMobileBody(bool canAddUser) {
-    // Calcula o padding do SafeArea para posicionar o FAB corretamente
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     
     return Stack(
@@ -100,7 +99,6 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
         if (canAddUser)
           Positioned(
             right: AppSpacing.md,
-            // Posiciona o FAB acima da barra de navegação nativa
             bottom: AppSpacing.md + bottomPadding,
             child: FloatingActionButton.extended(
               onPressed: () => _showAddUserDialog(context),
@@ -117,10 +115,7 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
   Widget _buildMobileContent() {
     return Column(
       children: [
-        // Barra de busca mobile
         _buildMobileSearchBar(),
-        
-        // Conteúdo principal
         Expanded(child: _buildMobileList()),
       ],
     );
@@ -133,7 +128,6 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
       color: AppColors.surface,
       child: Column(
         children: [
-          // Campo de busca
           TextField(
             controller: _searchController,
             decoration: InputDecoration(
@@ -162,7 +156,6 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
             onSubmitted: (_) => _loadUsuarios(),
           ),
           const SizedBox(height: AppSpacing.sm),
-          // Filtro por papel
           Row(
             children: [
               Expanded(
@@ -256,12 +249,11 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
     return RefreshIndicator(
       onRefresh: _loadUsuarios,
       child: ListView.builder(
-        // Padding com bottom maior para compensar o FAB e a barra nativa
         padding: const EdgeInsets.fromLTRB(
           AppSpacing.md,
           AppSpacing.md,
           AppSpacing.md,
-          100.0, // Espaço extra para o FAB não sobrepor o último item
+          100.0, 
         ),
         itemCount: _userService.usuarios.length,
         itemBuilder: (context, index) {
@@ -289,7 +281,6 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Avatar
             CircleAvatar(
               radius: 24,
               backgroundColor: AppColors.primary.withAlpha(26),
@@ -306,12 +297,10 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
             ),
             const SizedBox(width: AppSpacing.md),
 
-            // Informações do usuário
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Nome
                   Text(
                     user.displayName.isNotEmpty ? user.displayName : user.username,
                     style: GoogleFonts.poppins(
@@ -321,7 +310,6 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  // Email
                   if (user.email.isNotEmpty) ...[
                     Text(
                       user.email,
@@ -333,7 +321,6 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
                     ),
                     const SizedBox(height: AppSpacing.sm),
                   ],
-                  // Badges de Papel e Status
                   Row(
                     children: [
                       _buildMobilePapelChip(user.papelLabel),
@@ -364,7 +351,6 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
               ),
             ),
 
-            // Menu de ações
             if (canEdit)
               PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert, color: AppColors.textSecondary),
@@ -472,12 +458,8 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header com estatísticas
           _buildStatsRow(),
-
           const SizedBox(height: AppSpacing.lg),
-
-          // Card principal com tabela
           Expanded(
             child: Card(
               elevation: 0,
@@ -487,15 +469,10 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
               ),
               child: Column(
                 children: [
-                  // Toolbar com busca e filtros
                   _buildToolbar(),
-
-                  // Estado de carregamento, erro ou tabela
                   Expanded(
                     child: _buildContent(),
                   ),
-
-                  // Paginação
                   _buildPagination(),
                 ],
               ),
@@ -508,9 +485,7 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
 
   Widget _buildContent() {
     if (_userService.isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (_userService.errorMessage != null) {
@@ -637,13 +612,10 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: AppColors.divider.withAlpha(128)),
-        ),
+        border: Border(bottom: BorderSide(color: AppColors.divider.withAlpha(128))),
       ),
       child: Row(
         children: [
-          // Campo de busca
           Expanded(
             flex: 2,
             child: TextField(
@@ -665,10 +637,7 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
               onSubmitted: (_) => _loadUsuarios(),
             ),
           ),
-
           const SizedBox(width: AppSpacing.md),
-
-          // Filtro por papel
           Container(
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
             decoration: BoxDecoration(
@@ -692,10 +661,7 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
               ),
             ),
           ),
-
           const SizedBox(width: AppSpacing.md),
-
-          // Botão de recarregar
           IconButton(
             onPressed: _loadUsuarios,
             icon: const Icon(Icons.refresh),
@@ -716,42 +682,12 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
           headingRowColor: WidgetStateProperty.all(AppColors.background),
           columnSpacing: AppSpacing.lg,
           columns: [
-            DataColumn(
-              label: Text(
-                'Usuário',
-                style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-              ),
-            ),
-            DataColumn(
-              label: Text(
-                'Email',
-                style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-              ),
-            ),
-            DataColumn(
-              label: Text(
-                'Papel',
-                style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-              ),
-            ),
-            DataColumn(
-              label: Text(
-                'Status',
-                style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-              ),
-            ),
-            DataColumn(
-              label: Text(
-                'Unidades',
-                style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-              ),
-            ),
-            DataColumn(
-              label: Text(
-                'Ações',
-                style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-              ),
-            ),
+            DataColumn(label: Text('Usuário', style: GoogleFonts.poppins(fontWeight: FontWeight.w600))),
+            DataColumn(label: Text('Email', style: GoogleFonts.poppins(fontWeight: FontWeight.w600))),
+            DataColumn(label: Text('Papel', style: GoogleFonts.poppins(fontWeight: FontWeight.w600))),
+            DataColumn(label: Text('Status', style: GoogleFonts.poppins(fontWeight: FontWeight.w600))),
+            DataColumn(label: Text('Unidades', style: GoogleFonts.poppins(fontWeight: FontWeight.w600))),
+            DataColumn(label: Text('Ações', style: GoogleFonts.poppins(fontWeight: FontWeight.w600))),
           ],
           rows: usuarios.map((user) => _buildUserRow(user)).toList(),
         ),
@@ -765,7 +701,6 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
 
     return DataRow(
       cells: [
-        // Nome com avatar
         DataCell(
           Row(
             children: [
@@ -805,13 +740,9 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
             ],
           ),
         ),
-        // Email
         DataCell(Text(user.email)),
-        // Papel
         DataCell(_buildPapelBadge(user.papelLabel)),
-        // Status
         DataCell(_buildStatusBadge(user.isActive)),
-        // Unidades
         DataCell(
           Wrap(
             spacing: 4,
@@ -830,7 +761,6 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
             }).toList(),
           ),
         ),
-        // Ações
         DataCell(
           Row(
             mainAxisSize: MainAxisSize.min,
@@ -917,9 +847,7 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(color: AppColors.divider.withAlpha(128)),
-        ),
+        border: Border(top: BorderSide(color: AppColors.divider.withAlpha(128))),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -980,6 +908,7 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
   void _showAddUserDialog(BuildContext context) {
     showDialog(
       context: context,
+      barrierDismissible: false, // Evita fechar ao clicar fora por acidente
       builder: (context) => _UserFormDialog(
         title: 'Novo Usuário',
         userService: _userService,
@@ -993,6 +922,7 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
   void _showEditUserDialog(BuildContext context, ApiUsuario user) {
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) => _UserFormDialog(
         title: 'Editar Usuário',
         user: user,
@@ -1045,7 +975,9 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
   }
 }
 
-/// Dialog de formulário de usuário
+// =============================================================================
+// O NOVO MODAL RESPONSIVO DE USUÁRIOS
+// =============================================================================
 class _UserFormDialog extends StatefulWidget {
   final String title;
   final ApiUsuario? user;
@@ -1070,6 +1002,7 @@ class _UserFormDialogState extends State<_UserFormDialog> {
   late TextEditingController _firstNameController;
   late TextEditingController _lastNameController;
   late TextEditingController _passwordController;
+  
   String _selectedPapel = 'VENDEDOR';
   late List<int> _selectedUnidadeIds;
   bool _isLoading = false;
@@ -1082,12 +1015,12 @@ class _UserFormDialogState extends State<_UserFormDialog> {
     _firstNameController = TextEditingController(text: widget.user?.firstName ?? '');
     _lastNameController = TextEditingController(text: widget.user?.lastName ?? '');
     _passwordController = TextEditingController();
+    
     _selectedPapel = widget.user?.maxPapel ?? 'VENDEDOR';
     _selectedUnidadeIds = widget.user?.unidadesAcesso
         .map((v) => v.unidadeId ?? v.unidade?.id)
         .whereType<int>()
-        .toList() ??
-      [];
+        .toList() ?? [];
   }
 
   @override
@@ -1100,202 +1033,9 @@ class _UserFormDialogState extends State<_UserFormDialog> {
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final isEditing = widget.user != null;
-    final authService = Provider.of<AuthService>(context, listen: false);
-    final unidadesDisponiveis = authService.unidadesPermitidas;
-
-    if (_selectedUnidadeIds.isEmpty && !isEditing && authService.unidadeAtiva != null) {
-      _selectedUnidadeIds = [authService.unidadeAtiva!.id];
-    }
-
-    return Dialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-      ),
-      child: Container(
-        width: 450,
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    widget.title,
-                    style: GoogleFonts.poppins(
-                      fontSize: AppFontSizes.title,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-              const Divider(),
-              const SizedBox(height: AppSpacing.md),
-
-              // Campos
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _firstNameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Nome',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) => v?.isEmpty ?? true ? 'Obrigatório' : null,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _lastNameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Sobrenome',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.md),
-
-              TextFormField(
-                controller: _usernameController,
-                decoration: const InputDecoration(
-                  labelText: 'Username',
-                  border: OutlineInputBorder(),
-                ),
-                enabled: !isEditing,
-                validator: (v) => v?.isEmpty ?? true ? 'Obrigatório' : null,
-              ),
-              const SizedBox(height: AppSpacing.md),
-
-              TextFormField(
-                controller: _emailController,
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (v) {
-                  if (v != null && v.isNotEmpty && !v.contains('@')) return 'Email inválido';
-                  return null;
-                },
-              ),
-              const SizedBox(height: AppSpacing.md),
-
-              if (!isEditing)
-                TextFormField(
-                  controller: _passwordController,
-                  decoration: const InputDecoration(
-                    labelText: 'Senha',
-                    border: OutlineInputBorder(),
-                  ),
-                  obscureText: true,
-                  validator: (v) {
-                    if (!isEditing && (v?.isEmpty ?? true)) return 'Obrigatório';
-                    if (v != null && v.isNotEmpty && v.length < 6) {
-                      return 'Mínimo 6 caracteres';
-                    }
-                    return null;
-                  },
-                ),
-              if (!isEditing) const SizedBox(height: AppSpacing.md),
-
-              DropdownButtonFormField<String>(
-                value: _selectedPapel,
-                decoration: const InputDecoration(
-                  labelText: 'Papel',
-                  border: OutlineInputBorder(),
-                ),
-                items: [
-                  const DropdownMenuItem(value: 'VENDEDOR', child: Text('Vendedor')),
-                  const DropdownMenuItem(value: 'GERENTE', child: Text('Gerente')),
-                  const DropdownMenuItem(value: 'DIRETORIA', child: Text('Diretoria')),
-                  const DropdownMenuItem(value: 'ADMIN', child: Text('Administrador')),
-                ],
-                onChanged: (v) => setState(() => _selectedPapel = v!),
-              ),
-
-              if (unidadesDisponiveis.isNotEmpty) ...[
-                const SizedBox(height: AppSpacing.md),
-                Text(
-                  'Unidades de Acesso',
-                  style: GoogleFonts.poppins(
-                    fontSize: AppFontSizes.body,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xs),
-                Wrap(
-                  spacing: AppSpacing.xs,
-                  runSpacing: AppSpacing.xs,
-                  children: unidadesDisponiveis.map((unidade) {
-                    final selected = _selectedUnidadeIds.contains(unidade.id);
-                    return FilterChip(
-                      label: Text('${unidade.codigoUnb} - ${unidade.nome}'),
-                      selected: selected,
-                      onSelected: (value) {
-                        setState(() {
-                          if (value) {
-                            _selectedUnidadeIds.add(unidade.id);
-                          } else {
-                            _selectedUnidadeIds.remove(unidade.id);
-                          }
-                        });
-                      },
-                    );
-                  }).toList(),
-                ),
-              ],
-
-              const SizedBox(height: AppSpacing.lg),
-
-              // Botões
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Cancelar'),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  ElevatedButton(
-                    onPressed: _isLoading ? null : _salvar,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: AppColors.onPrimary,
-                    ),
-                    child: _isLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Salvar'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _salvar() async {
     if (!_formKey.currentState!.validate()) return;
+    
     if (_selectedUnidadeIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1309,8 +1049,9 @@ class _UserFormDialogState extends State<_UserFormDialog> {
     setState(() => _isLoading = true);
 
     bool success = false;
+    
+    // LÓGICA DE EDIÇÃO
     if (widget.user != null) {
-      // Edição
       success = await widget.userService.updateUsuario(widget.user!.id, {
         'first_name': _firstNameController.text,
         'last_name': _lastNameController.text,
@@ -1326,27 +1067,20 @@ class _UserFormDialogState extends State<_UserFormDialog> {
         final selectedIds = _selectedUnidadeIds.toSet();
 
         for (final unidadeId in selectedIds.difference(currentIds)) {
-          final linked = await widget.userService
-              .vincularUnidade(widget.user!.id, unidadeId, _selectedPapel);
-          if (!linked) {
-            success = false;
-            break;
-          }
+          final linked = await widget.userService.vincularUnidade(widget.user!.id, unidadeId, _selectedPapel);
+          if (!linked) { success = false; break; }
         }
 
         if (success) {
           for (final unidadeId in currentIds.difference(selectedIds)) {
-            final unlinked = await widget.userService
-                .desvincularUnidade(widget.user!.id, unidadeId);
-            if (!unlinked) {
-              success = false;
-              break;
-            }
+            final unlinked = await widget.userService.desvincularUnidade(widget.user!.id, unidadeId);
+            if (!unlinked) { success = false; break; }
           }
         }
       }
-    } else {
-      // Criação
+    } 
+    // LÓGICA DE CRIAÇÃO
+    else {
       final novoUsuario = await widget.userService.createUsuario(
         username: _usernameController.text,
         email: _emailController.text,
@@ -1361,12 +1095,8 @@ class _UserFormDialogState extends State<_UserFormDialog> {
 
       if (success && novoUsuario != null) {
         for (final unidadeId in _selectedUnidadeIds) {
-          final linked = await widget.userService
-              .vincularUnidade(novoUsuario.id, unidadeId, _selectedPapel);
-          if (!linked) {
-            success = false;
-            break;
-          }
+          final linked = await widget.userService.vincularUnidade(novoUsuario.id, unidadeId, _selectedPapel);
+          if (!linked) { success = false; break; }
         }
       }
     }
@@ -1378,10 +1108,7 @@ class _UserFormDialogState extends State<_UserFormDialog> {
         Navigator.pop(context);
         widget.onSave();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Usuário salvo com sucesso!'),
-            backgroundColor: AppColors.success,
-          ),
+          const SnackBar(content: Text('Usuário salvo com sucesso!'), backgroundColor: AppColors.success),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1392,5 +1119,249 @@ class _UserFormDialogState extends State<_UserFormDialog> {
         );
       }
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isEditing = widget.user != null;
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final unidadesDisponiveis = authService.unidadesPermitidas;
+
+    if (_selectedUnidadeIds.isEmpty && !isEditing && authService.unidadeAtiva != null) {
+      _selectedUnidadeIds = [authService.unidadeAtiva!.id];
+    }
+
+    // Variáveis de Responsividade
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 450; 
+
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
+      // O Scaffold Transparente serve apenas para forçar o Flutter a redesenhar a tela quando o teclado sobe!
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        resizeToAvoidBottomInset: true,
+        body: Center(
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+            ),
+            constraints: BoxConstraints(
+              maxHeight: screenHeight * 0.85, // Limita o popup a 85% da tela!
+              maxWidth: 500, // Não deixa ficar largo demais no navegador
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min, // Ajusta o tamanho se tiver pouco conteúdo
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                
+                // --- 1. CABEÇALHO (Fixo) ---
+                Padding(
+                  padding: const EdgeInsets.only(left: 24, right: 8, top: 8, bottom: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        widget.title,
+                        style: GoogleFonts.poppins(
+                          fontSize: AppFontSizes.title,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.grey),
+                        onPressed: () => Navigator.pop(context),
+                        splashRadius: 24,
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+
+                // --- 2. CORPO (Rolável - Sem Overflow) ---
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          
+                          // Ajuste responsivo do Nome / Sobrenome
+                          if (isSmallScreen) ...[
+                            TextFormField(
+                              controller: _firstNameController,
+                              decoration: const InputDecoration(labelText: 'Nome', border: OutlineInputBorder()),
+                              validator: (v) => v?.isEmpty ?? true ? 'Obrigatório' : null,
+                            ),
+                            const SizedBox(height: AppSpacing.md),
+                            TextFormField(
+                              controller: _lastNameController,
+                              decoration: const InputDecoration(labelText: 'Sobrenome', border: OutlineInputBorder()),
+                            ),
+                          ] else ...[
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: _firstNameController,
+                                    decoration: const InputDecoration(labelText: 'Nome', border: OutlineInputBorder()),
+                                    validator: (v) => v?.isEmpty ?? true ? 'Obrigatório' : null,
+                                  ),
+                                ),
+                                const SizedBox(width: AppSpacing.md),
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: _lastNameController,
+                                    decoration: const InputDecoration(labelText: 'Sobrenome', border: OutlineInputBorder()),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                          
+                          const SizedBox(height: AppSpacing.md),
+                          TextFormField(
+                            controller: _usernameController,
+                            decoration: const InputDecoration(labelText: 'Username', border: OutlineInputBorder()),
+                            enabled: !isEditing,
+                            validator: (v) => v?.isEmpty ?? true ? 'Obrigatório' : null,
+                          ),
+                          
+                          const SizedBox(height: AppSpacing.md),
+                          TextFormField(
+                            controller: _emailController,
+                            decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
+                            keyboardType: TextInputType.emailAddress,
+                            validator: (v) {
+                              if (v != null && v.isNotEmpty && !v.contains('@')) return 'Email inválido';
+                              return null;
+                            },
+                          ),
+                          
+                          const SizedBox(height: AppSpacing.md),
+                          if (!isEditing) ...[
+                            TextFormField(
+                              controller: _passwordController,
+                              decoration: const InputDecoration(labelText: 'Senha', border: OutlineInputBorder()),
+                              obscureText: true,
+                              validator: (v) {
+                                if (v?.isEmpty ?? true) return 'Obrigatório';
+                                if (v != null && v.isNotEmpty && v.length < 6) return 'Mínimo 6 caracteres';
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: AppSpacing.md),
+                          ],
+
+                          DropdownButtonFormField<String>(
+                            value: _selectedPapel,
+                            decoration: const InputDecoration(labelText: 'Papel', border: OutlineInputBorder()),
+                            items: const [
+                              DropdownMenuItem(value: 'VENDEDOR', child: Text('Vendedor')),
+                              DropdownMenuItem(value: 'GERENTE', child: Text('Gerente')),
+                              DropdownMenuItem(value: 'DIRETORIA', child: Text('Diretoria')),
+                              DropdownMenuItem(value: 'ADMIN', child: Text('Administrador')),
+                            ],
+                            onChanged: (v) => setState(() => _selectedPapel = v!),
+                          ),
+
+                          if (unidadesDisponiveis.isNotEmpty) ...[
+                            const SizedBox(height: AppSpacing.lg),
+                            Text(
+                              'Unidades de Acesso',
+                              style: GoogleFonts.poppins(
+                                fontSize: AppFontSizes.body,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: AppSpacing.xs),
+                            // WRAP resolve o problema dos nomes grandes de unidades quebrando a tela
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: unidadesDisponiveis.map((unidade) {
+                                final isSelected = _selectedUnidadeIds.contains(unidade.id);
+                                return FilterChip(
+                                  label: Text(
+                                    '${unidade.codigoUnb} - ${unidade.nome}',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      color: isSelected ? AppColors.onPrimary : AppColors.textPrimary,
+                                    ),
+                                  ),
+                                  selected: isSelected,
+                                  selectedColor: AppColors.primary,
+                                  checkmarkColor: AppColors.onPrimary,
+                                  backgroundColor: AppColors.background,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                                    side: BorderSide(color: isSelected ? AppColors.primary : AppColors.divider),
+                                  ),
+                                  onSelected: (value) {
+                                    setState(() {
+                                      if (value) {
+                                        _selectedUnidadeIds.add(unidade.id);
+                                      } else {
+                                        _selectedUnidadeIds.remove(unidade.id);
+                                      }
+                                    });
+                                  },
+                                );
+                              }).toList(),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const Divider(height: 1),
+
+                // --- 3. RODAPÉ (Fixo) ---
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: _isLoading ? null : () => Navigator.pop(context),
+                        child: Text(
+                          'Cancelar',
+                          style: GoogleFonts.poppins(color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.md),
+                      ElevatedButton(
+                        onPressed: _isLoading ? null : _salvar,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: AppColors.onPrimary,
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                        ),
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : Text('Salvar', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+                      ),
+                    ],
+                  ),
+                ),
+                
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

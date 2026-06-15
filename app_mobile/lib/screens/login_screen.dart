@@ -349,7 +349,7 @@ class _LoginScreenState extends State<LoginScreen>
 
               // Versão do app
               Text(
-                'v1.2.0',
+                'v1.2.1',
                 style: GoogleFonts.poppins(
                   fontSize: AppFontSizes.caption,
                   color: AppColors.textSecondary,

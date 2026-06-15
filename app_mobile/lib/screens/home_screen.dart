@@ -186,11 +186,11 @@ class _HomeScreenState extends State<HomeScreen> {
               Expanded(
                 child: ListView(
                   children: [
-                    // Consulta Validade - Visível para todos
+                    // Consultar Estoque - Visível para todos
                     _buildMenuButton(
                       context,
                       icon: Icons.search,
-                      title: 'Consulta Validade',
+                      title: 'Consultar Estoque',
                       subtitle: 'Buscar produto por SKU ou nome',
                       color: AppColors.info,
                       onTap: () {

@@ -5,7 +5,7 @@ Estrutura:
 - /api/auth/          -> Autenticação (login, logout, me, token)
 - /api/unidades/      -> CRUD Unidades de Negócio
 - /api/usuarios/      -> CRUD Usuários (RBAC: GERENTE+)
-- /api/skus/          -> CRUD SKUs + Consulta Validade
+- /api/skus/          -> CRUD SKUs + Consultar Estoque
 - /api/estoque/       -> Estoque Inicial (read-only)
 - /api/criticidade/   -> Relatório de Criticidade
 - /api/movimentacoes/ -> Movimentações de Estoque

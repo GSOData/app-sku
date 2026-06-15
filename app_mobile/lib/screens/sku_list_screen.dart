@@ -204,7 +204,7 @@ class _SkuListScreenState extends State<SkuListScreen> {
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: Text(
-          'Consulta Validade',
+          'Consultar Estoque',
           style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
         ),
         backgroundColor: AppColors.primary,
