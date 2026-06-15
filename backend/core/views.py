@@ -39,6 +39,8 @@ from .models import (
     MovimentacaoEstoque,
     LogConsulta,
     HistoricoUpload,
+    ModuloMenu,
+    PermissaoMenu,
 )
 from .serializers import (
     UnidadeNegocioSerializer,
@@ -57,6 +59,7 @@ from .serializers import (
     NotificacaoAlertaSerializer,
     HistoricoUploadSerializer,
     HistoricoUploadUltimoSerializer,
+    MenuDinamicoSerializer,
     STATUS_CORES,
     STATUS_LABELS,
 )
@@ -1262,3 +1265,57 @@ class NotificacoesAlertaView(UnidadeAccessMixin, APIView):
             'resumo': resumo,
             'notificacoes': NotificacaoAlertaSerializer(notificacoes, many=True).data,
         })
+
+
+# =============================================================================
+# MENUS DINÂMICOS (CONTROLE DE ACESSO)
+# =============================================================================
+class MeusMenusView(APIView):
+    """
+    GET /api/menus/meus-menus/?unidade_id=X
+    
+    Retorna os módulos de menu que o usuário atual tem permissão de acessar
+    na unidade informada. Superusuários recebem todos os módulos ativos globalmente.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        unidade_id = request.query_params.get('unidade_id')
+        if not unidade_id:
+            return Response(
+                {'error': 'Parâmetro unidade_id é obrigatório.'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        try:
+            unidade_id = int(unidade_id)
+        except ValueError:
+            return Response(
+                {'error': 'unidade_id inválido.'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        usuario = request.user
+        
+        # Recupera o papel que o usuário desempenha especificamente nesta filial
+        papel = usuario.get_papel_unidade(unidade_id)
+        
+        # Se for superuser, ignora restrições e traz tudo o que estiver ativo globalmente
+        if usuario.is_superuser:
+            modulos = ModuloMenu.objects.filter(globalmente_ativo=True)
+        else:
+            if not papel:
+                return Response([]) # Sem vínculo com a unidade = nenhum menu
+                
+            # Busca os IDs dos módulos que estão explicitamente visíveis para o papel dele
+            modulos_permitidos_ids = PermissaoMenu.objects.filter(
+                papel=papel,
+                visivel=True,
+                modulo__globalmente_ativo=True
+            ).values_list('modulo_id', flat=True)
+            
+            # Filtra os módulos que estão permitidos e ativos globalmente
+            modulos = ModuloMenu.objects.filter(id__in=modulos_permitidos_ids)
+            
+        serializer = MenuDinamicoSerializer(modulos, many=True)
+        return Response(serializer.data)

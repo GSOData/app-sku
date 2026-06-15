@@ -670,3 +670,85 @@ class LogConsulta(BaseModel):
 
     def __str__(self):
         return f'{self.usuario} - {self.tipo_consulta} ({self.created_at})'
+    
+class ModuloMenu(BaseModel):
+    """
+    Representa um módulo ou item de menu do aplicativo.
+    A 'chave' é o identificador único que o Flutter usará para renderizar o componente.
+    """
+    chave = models.CharField(
+        'Chave do Módulo',
+        max_length=50,
+        unique=True,
+        db_index=True,
+        help_text='Ex: consultar_estoque, itens_criticidade, gestao_usuarios. Deve bater com o Flutter.'
+    )
+    titulo = models.CharField(
+        'Título do Menu',
+        max_length=100
+    )
+    icone = models.CharField(
+        'Nome do Ícone',
+        max_length=50,
+        blank=True,
+        null=True,
+        help_text='Nome do ícone ou identificador string para o Flutter (Ex: inventory, warning).'
+    )
+    ordem = models.PositiveIntegerField(
+        'Ordem de Exibição',
+        default=0,
+        db_index=True
+    )
+    globalmente_ativo = models.BooleanField(
+        'Globalmente Ativo',
+        default=True,
+        help_text='Se desativado aqui, nenhum usuário do sistema verá este menu, independente do papel.'
+    )
+
+    class Meta:
+        verbose_name = 'Módulo de Menu'
+        verbose_name_plural = 'Módulos de Menu'
+        ordering = ['ordem', 'titulo']
+
+    def __str__(self):
+        return f'{self.titulo} ({self.chave})'
+
+
+class PermissaoMenu(BaseModel):
+    """
+    Tabela de junção (RBAC) que determina se um papel específico
+    pode visualizar um módulo de menu.
+    """
+    PAPEL_CHOICES = [
+        ('VENDEDOR', 'Vendedor'),
+        ('GERENTE', 'Gerente'),
+        ('DIRETORIA', 'Diretoria'),
+        ('ADMIN', 'Administrador'),
+    ]
+
+    modulo = models.ForeignKey(
+        ModuloMenu,
+        on_delete=models.CASCADE,
+        related_name='permissoes',
+        verbose_name='Módulo/Menu'
+    )
+    papel = models.CharField(
+        'Papel com Acesso',
+        max_length=50,
+        choices=PAPEL_CHOICES,
+        db_index=True
+    )
+    visivel = models.BooleanField(
+        'Visível',
+        default=True,
+        help_text='Determina se este papel específico pode ver este menu.'
+    )
+
+    class Meta:
+        verbose_name = 'Permissão de Menu'
+        verbose_name_plural = 'Permissões de Menu'
+        unique_together = ['modulo', 'papel']
+
+    def __str__(self):
+        status = 'Visível' if self.visivel else 'Oculto'
+        return f'{self.papel} -> {self.modulo.titulo} ({status})'

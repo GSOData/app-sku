@@ -15,6 +15,7 @@ from .models import (
     MovimentacaoEstoque,
     LogConsulta,
     HistoricoUpload,
+    ModuloMenu,
 )
 
 Usuario = get_user_model()
@@ -604,3 +605,11 @@ class HistoricoUploadUltimoSerializer(serializers.ModelSerializer):
     class Meta:
         model = HistoricoUpload
         fields = ['data_upload', 'tipo_arquivo']
+
+class MenuDinamicoSerializer(serializers.ModelSerializer):
+    """
+    Serializer para entregar os menus permitidos prontos para o Flutter.
+    """
+    class Meta:
+        model = ModuloMenu
+        fields = ['chave', 'titulo', 'icone', 'ordem']

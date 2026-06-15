@@ -11,6 +11,7 @@ Estrutura:
 - /api/movimentacoes/ -> Movimentações de Estoque
 - /api/configuracoes/ -> Configurações de Alerta
 - /api/logs/          -> Logs de Consulta (admin)
+- /api/menus/         -> Menus Dinâmicos
 """
 
 from django.urls import path, include
@@ -35,6 +36,7 @@ from .views import (
     RelatorioCriticidadeView,
     UploadEstoqueView,
     NotificacoesAlertaView,
+    MeusMenusView,  # <--- NOVA VIEW IMPORTADA AQUI
 )
 
 app_name = 'core'
@@ -70,6 +72,9 @@ urlpatterns = [
 
     # Upload de arquivos
     path('upload/grade-020502/', UploadEstoqueView.as_view(), name='upload-grade'),
+
+    # Menus Dinâmicos (RBAC)  <--- NOVA ROTA REGISTRADA AQUI
+    path('menus/meus-menus/', MeusMenusView.as_view(), name='meus-menus'),
 
     # ViewSets (router)
     path('', include(router.urls)),
