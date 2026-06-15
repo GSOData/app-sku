@@ -13,12 +13,20 @@ from .models import (
     MovimentacaoEstoque,
     LogConsulta,
     HistoricoUpload,
+    ModuloMenu,       # Novo modelo adicionado
+    PermissaoMenu,    # Novo modelo adicionado
 )
 
 
 class UsuarioUnidadeInline(admin.TabularInline):
     model = UsuarioUnidade
     extra = 1
+
+
+class PermissaoMenuInline(admin.TabularInline):
+    """Permite configurar permissões diretamente na tela do Módulo de Menu"""
+    model = PermissaoMenu
+    extra = 4  # Traz 4 linhas em branco para preencher os 4 papéis facilmente
 
 
 @admin.register(Usuario)
@@ -81,3 +89,25 @@ class HistoricoUploadAdmin(admin.ModelAdmin):
     search_fields = ['usuario__username', 'nome_arquivo']
     ordering = ['-created_at']
     readonly_fields = ['tipo_arquivo', 'usuario', 'unidade_negocio', 'status', 'linhas_processadas', 'nome_arquivo', 'mensagem_erro', 'created_at']
+
+
+# =============================================================================
+# MENUS DINÂMICOS E CONTROLE DE ACESSO
+# =============================================================================
+
+@admin.register(ModuloMenu)
+class ModuloMenuAdmin(admin.ModelAdmin):
+    list_display = ['titulo', 'chave', 'ordem', 'globalmente_ativo', 'created_at']
+    list_filter = ['globalmente_ativo']
+    search_fields = ['titulo', 'chave']
+    list_editable = ['ordem', 'globalmente_ativo']  # Permite ordenar e ligar/desligar direto da tabela geral
+    ordering = ['ordem', 'titulo']
+    inlines = [PermissaoMenuInline]  # Amarra as permissões na mesma tela
+
+
+@admin.register(PermissaoMenu)
+class PermissaoMenuAdmin(admin.ModelAdmin):
+    list_display = ['modulo', 'papel', 'visivel', 'ativo']
+    list_filter = ['papel', 'visivel', 'ativo', 'modulo']
+    search_fields = ['modulo__titulo', 'modulo__chave']
+    list_editable = ['visivel', 'ativo']
