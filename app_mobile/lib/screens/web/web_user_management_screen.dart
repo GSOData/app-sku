@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/services.dart';
 import '../../utils/constants.dart';
 import '../../widgets/responsive_layout.dart';
 import '../../widgets/web_navigation_menu.dart';
@@ -1006,6 +1007,7 @@ class _UserFormDialogState extends State<_UserFormDialog> {
   String _selectedPapel = 'VENDEDOR';
   late List<int> _selectedUnidadeIds;
   bool _isLoading = false;
+  bool _obscurePassword = true;
 
   @override
   void initState() {
@@ -1228,9 +1230,21 @@ class _UserFormDialogState extends State<_UserFormDialog> {
                           const SizedBox(height: AppSpacing.md),
                           TextFormField(
                             controller: _usernameController,
-                            decoration: const InputDecoration(labelText: 'Username', border: OutlineInputBorder()),
+                            keyboardType: TextInputType.number, // Abre apenas o teclado numérico
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly, // Bloqueia letras, pontos e traços
+                              LengthLimitingTextInputFormatter(11),   // Trava em 11 caracteres
+                            ],
+                            decoration: const InputDecoration(
+                              labelText: 'CPF (Apenas números)',
+                              border: OutlineInputBorder(),
+                            ),
                             enabled: !isEditing,
-                            validator: (v) => v?.isEmpty ?? true ? 'Obrigatório' : null,
+                            validator: (v) {
+                              if (v == null || v.isEmpty) return 'Obrigatório';
+                              if (v.length != 11) return 'O CPF deve ter 11 dígitos';
+                              return null;
+                            },
                           ),
                           
                           const SizedBox(height: AppSpacing.md),
@@ -1239,7 +1253,9 @@ class _UserFormDialogState extends State<_UserFormDialog> {
                             decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
                             keyboardType: TextInputType.emailAddress,
                             validator: (v) {
-                              if (v != null && v.isNotEmpty && !v.contains('@')) return 'Email inválido';
+                              // Se estiver vazio, não valida (já que é opcional)
+                              if (v == null || v.isEmpty) return null; 
+                              if (!v.contains('@')) return 'Email inválido';
                               return null;
                             },
                           ),
@@ -1248,11 +1264,25 @@ class _UserFormDialogState extends State<_UserFormDialog> {
                           if (!isEditing) ...[
                             TextFormField(
                               controller: _passwordController,
-                              decoration: const InputDecoration(labelText: 'Senha', border: OutlineInputBorder()),
-                              obscureText: true,
+                              decoration: InputDecoration(
+                                labelText: 'Senha',
+                                border: const OutlineInputBorder(),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                                    color: Colors.grey,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _obscurePassword = !_obscurePassword; // Inverte o estado
+                                    });
+                                  },
+                                ),
+                              ),
+                              obscureText: _obscurePassword, // Vincula à variável controladora
                               validator: (v) {
-                                if (v?.isEmpty ?? true) return 'Obrigatório';
-                                if (v != null && v.isNotEmpty && v.length < 6) return 'Mínimo 6 caracteres';
+                                if (v == null || v.isEmpty) return 'Obrigatório';
+                                if (v.length < 6) return 'Mínimo 6 caracteres';
                                 return null;
                               },
                             ),

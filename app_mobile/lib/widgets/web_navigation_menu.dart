@@ -288,16 +288,12 @@ class WebNavigationMenu extends StatelessWidget {
   /// Constrói os itens do menu condicionalmente baseado no papel do usuário
   Widget _buildMenuItems(BuildContext context) {
     final authService = Provider.of<AuthService>(context);
-    final usuario = authService.usuario;
     final notificationService = Provider.of<NotificationService>(context);
     final criticalCount = notificationService.totalAlertas;
+    final isDiretoria = authService.usuario?.isDiretoria ?? false;
     
-    // Valores padrão para usuários não autenticados ou sem papel definido
-    final canUpload = usuario?.canUpload ?? false;
-    final canManageUsers = usuario?.canManageUsers ?? false;
-    final canManageSettings = usuario?.canManageSettings ?? false;
-    final isDiretoria = usuario?.isDiretoria ?? false;
-    final canViewDashboard = usuario?.canViewDashboard ?? false;
+    // Lista de permissões vinda dinamicamente da API do Django
+    final menusPermitidos = authService.menusPermitidos;
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -308,8 +304,8 @@ class WebNavigationMenu extends StatelessWidget {
         if (!isCollapsed)
           _buildSectionLabel('PRINCIPAL'),
         
-        // Dashboard - Visível apenas para GERENTE e DIRETORIA
-        if (canViewDashboard)
+        // Dashboard - Chave: 'dashboard'
+        if (menusPermitidos.contains('dashboard'))
           _buildMenuItem(
             context,
             icon: Icons.dashboard_outlined,
@@ -319,30 +315,32 @@ class WebNavigationMenu extends StatelessWidget {
             onTap: () => _navigateTo(context, WebMenuSection.dashboard),
           ),
         
-        // Lista de SKUs - Visível para todos
-        _buildMenuItem(
-          context,
-          icon: Icons.inventory_2_outlined,
-          activeIcon: Icons.inventory_2,
-          label: 'Lista de SKUs',
-          section: WebMenuSection.skus,
-          onTap: () => _navigateTo(context, WebMenuSection.skus),
-        ),
+        // Consultar Estoque (Antiga Lista de SKUs) - Chave: 'consultar_estoque'
+        if (menusPermitidos.contains('consultar_estoque'))
+          _buildMenuItem(
+            context,
+            icon: Icons.inventory_2_outlined,
+            activeIcon: Icons.inventory_2,
+            label: 'Consultar Estoque',
+            section: WebMenuSection.skus,
+            onTap: () => _navigateTo(context, WebMenuSection.skus),
+          ),
         
-        // Itens Críticos - Visível para todos
-        _buildMenuItem(
-          context,
-          icon: Icons.warning_amber_outlined,
-          activeIcon: Icons.warning_amber,
-          label: 'Itens Críticos',
-          section: WebMenuSection.critical,
-          badge: criticalCount > 0 ? '$criticalCount' : null,
-          badgeColor: AppColors.error,
-          onTap: () => _navigateTo(context, WebMenuSection.critical),
-        ),
+        // Itens Críticos - Chave: 'itens_criticidade'
+        if (menusPermitidos.contains('itens_criticidade'))
+          _buildMenuItem(
+            context,
+            icon: Icons.warning_amber_outlined,
+            activeIcon: Icons.warning_amber,
+            label: 'Itens Críticos',
+            section: WebMenuSection.critical,
+            badge: criticalCount > 0 ? '$criticalCount' : null,
+            badgeColor: AppColors.error,
+            onTap: () => _navigateTo(context, WebMenuSection.critical),
+          ),
         
-        // Relatório Estoque - Visível apenas para GERENTE e DIRETORIA
-        if (canViewDashboard)
+        // Relatório Estoque - Chave: 'relatorio_estoque'
+        if (menusPermitidos.contains('relatorio_estoque'))
           _buildMenuItem(
             context,
             icon: Icons.assessment_outlined,
@@ -353,15 +351,15 @@ class WebNavigationMenu extends StatelessWidget {
           ),
 
         // ============================================
-        // SEÇÃO GESTÃO - Apenas GERENTE e DIRETORIA
+        // SEÇÃO GESTÃO - Apenas papéis permitidos
         // ============================================
-        if (canManageUsers || canUpload) ...[
+        if (menusPermitidos.contains('gestao_usuarios') || menusPermitidos.contains('upload_dados')) ...[
           const SizedBox(height: AppSpacing.md),
           if (!isCollapsed)
             _buildSectionLabel('GESTÃO'),
           
-          // Usuários: GERENTE (sua unidade) e DIRETORIA (todas)
-          if (canManageUsers)
+          // Usuários - Chave: 'gestao_usuarios'
+          if (menusPermitidos.contains('gestao_usuarios'))
             _buildMenuItem(
               context,
               icon: Icons.people_outline,
@@ -371,8 +369,8 @@ class WebNavigationMenu extends StatelessWidget {
               onTap: () => _navigateTo(context, WebMenuSection.users),
             ),
           
-          // Upload: apenas GERENTE
-          if (canUpload)
+          // Upload - Chave: 'upload_dados'
+          if (menusPermitidos.contains('upload_dados'))
             _buildMenuItem(
               context,
               icon: Icons.upload_file_outlined,
@@ -384,13 +382,14 @@ class WebNavigationMenu extends StatelessWidget {
         ],
 
         // ============================================
-        // SEÇÃO SISTEMA - Apenas GERENTE e DIRETORIA
+        // SEÇÃO SISTEMA - Configurações gerais
         // ============================================
-        if (canManageSettings) ...[
+        if (menusPermitidos.contains('configuracoes')) ...[
           const SizedBox(height: AppSpacing.md),
           if (!isCollapsed)
             _buildSectionLabel('SISTEMA'),
           
+          // Configurações - Chave: 'configuracoes'
           _buildMenuItem(
             context,
             icon: Icons.settings_outlined,

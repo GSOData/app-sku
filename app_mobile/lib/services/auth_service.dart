@@ -91,7 +91,7 @@ class Usuario {
       'telefone': telefone,
       'cargo': cargo,
       'is_superuser': isSuperuser,
-      'max_papel': maxPapel,
+      'maxPapel': maxPapel,
       'unidades_acesso': unidadesAcesso,
     };
   }
@@ -156,6 +156,9 @@ class AuthService extends ChangeNotifier {
   UnidadeNegocio? _unidadeAtiva;
   List<UnidadeNegocio> _unidadesPermitidas = [];
 
+  // Menus Dinâmicos
+  List<String> _menusPermitidos = [];
+
   // Getters
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _isAuthenticated;
@@ -167,6 +170,9 @@ class AuthService extends ChangeNotifier {
   UnidadeNegocio? get unidadeAtiva => _unidadeAtiva;
   List<UnidadeNegocio> get unidadesPermitidas => _unidadesPermitidas;
   bool get hasUnidadeAtiva => _unidadeAtiva != null;
+
+  // Getter Menus Dinâmicos
+  List<String> get menusPermitidos => _menusPermitidos;
   
   /// Query param para concatenar nas URLs de API
   String get unidadeQueryParam => _unidadeAtiva != null 
@@ -277,6 +283,33 @@ class AuthService extends ChangeNotifier {
       _unidadeAtiva = _unidadesPermitidas.first;
       await _saveUnidadeAtiva();
     }
+
+    // Após carregar a unidade ativa com sucesso, baixa a lista de menus permitidos para ela
+    if (_unidadeAtiva != null) {
+      await _loadMenusPermitidos();
+    }
+  }
+
+  /// Chama a API para descobrir quais módulos de menu este usuário pode ver nesta unidade
+  Future<void> _loadMenusPermitidos() async {
+    if (_unidadeAtiva == null || _accessToken == null) return;
+    
+    try {
+      final response = await http.get(
+        Uri.parse('${Constants.apiUrl}menus/meus-menus/?unidade_id=${_unidadeAtiva!.id}'),
+        headers: authHeaders,
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as List;
+        // Mapeia o JSON para criar uma lista limpa só com as 'chaves'
+        _menusPermitidos = data.map((item) => item['chave'].toString()).toList();
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Erro ao buscar menus dinâmicos: $e');
+      _menusPermitidos = [];
+    }
   }
   
   /// Altera a unidade ativa
@@ -288,6 +321,10 @@ class AuthService extends ChangeNotifier {
     
     _unidadeAtiva = unidade;
     await _saveUnidadeAtiva();
+    
+    // TODA VEZ que ele muda de unidade, os menus devem ser recarregados!
+    await _loadMenusPermitidos();
+    
     notifyListeners();
   }
   
@@ -337,6 +374,9 @@ class AuthService extends ChangeNotifier {
           _unidadeAtiva = _unidadesPermitidas.first;
           await _saveUnidadeAtiva();
         }
+
+        // Carrega os menus logo após o primeiro login bem-sucedido
+        await _loadMenusPermitidos();
 
         _isLoading = false;
         notifyListeners();
@@ -389,6 +429,7 @@ class AuthService extends ChangeNotifier {
     _usuario = null;
     _unidadeAtiva = null;
     _unidadesPermitidas = [];
+    _menusPermitidos = []; // Limpa os menus
     _isAuthenticated = false;
     _isLoading = false;
     notifyListeners();

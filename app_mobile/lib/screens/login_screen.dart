@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // <--- Import necessário para os Formatters
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/auth_service.dart';
@@ -328,12 +329,12 @@ class _LoginScreenState extends State<LoginScreen>
 
                       const SizedBox(height: AppSpacing.lg),
 
-                      // Campo Usuário
+                      // Campo Usuário -> Atualizado para CPF
                       _buildUsernameField(),
 
                       const SizedBox(height: AppSpacing.md),
 
-                      // Campo Senha
+                      // Campo Senha -> Atualizado com o olho
                       _buildPasswordField(),
 
                       const SizedBox(height: AppSpacing.lg),
@@ -405,12 +406,16 @@ class _LoginScreenState extends State<LoginScreen>
   Widget _buildUsernameField() {
     return TextFormField(
       controller: _usernameController,
-      keyboardType: TextInputType.text,
+      keyboardType: TextInputType.number, // <--- Teclado Numérico
       textInputAction: TextInputAction.next,
+      inputFormatters: [
+        FilteringTextInputFormatter.digitsOnly, // <--- Apenas dígitos
+        LengthLimitingTextInputFormatter(11),   // <--- Limita em 11 caracteres
+      ],
       decoration: InputDecoration(
-        labelText: 'Usuário',
-        hintText: 'Digite seu usuário',
-        prefixIcon: const Icon(Icons.person_outline),
+        labelText: 'CPF', // <--- Alterado para CPF
+        hintText: 'Digite apenas os 11 números',
+        prefixIcon: const Icon(Icons.badge_outlined), // <--- Ícone de CPF/Crachá
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.md),
         ),
@@ -429,7 +434,10 @@ class _LoginScreenState extends State<LoginScreen>
       ),
       validator: (value) {
         if (value == null || value.trim().isEmpty) {
-          return 'Informe o usuário';
+          return 'Informe o CPF';
+        }
+        if (value.trim().length != 11) {
+          return 'O CPF deve ter 11 dígitos';
         }
         return null;
       },
@@ -448,7 +456,8 @@ class _LoginScreenState extends State<LoginScreen>
         prefixIcon: const Icon(Icons.lock_outline),
         suffixIcon: IconButton(
           icon: Icon(
-            _obscurePassword ? Icons.visibility_off : Icons.visibility,
+            _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+            color: Colors.grey, // <--- Ajustado a cor do ícone
           ),
           onPressed: () {
             setState(() {

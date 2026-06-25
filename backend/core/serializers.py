@@ -42,6 +42,23 @@ STATUS_LABELS = {
     'SEM_ESTOQUE': 'Sem Estoque',
 }
 
+def valida_cpf(cpf: str) -> bool:
+    """Valida matematicamente um número de CPF."""
+    # Remove caracteres não numéricos
+    cpf = ''.join(filter(str.isdigit, cpf))
+    
+    # Verifica se tem 11 dígitos ou se é uma sequência repetida comum
+    if len(cpf) != 11 or cpf == cpf[0] * 11:
+        return False
+        
+    # Validação dos dígitos verificadores
+    for i in range(9, 11):
+        soma = sum(int(cpf[num]) * ((i + 1) - num) for num in range(i))
+        digito = (soma * 10 % 11) % 10
+        if digito != int(cpf[i]):
+            return False
+            
+    return True
 
 # =============================================================================
 # UNIDADE DE NEGÓCIO
@@ -126,15 +143,17 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
 
 class UsuarioCreateSerializer(serializers.ModelSerializer):
-    """Serializer para criação de Usuário com senha."""
+    """Serializer para criação de Usuário com CPF e E-mail opcional."""
     password = serializers.CharField(write_only=True, min_length=8)
     password_confirm = serializers.CharField(write_only=True, min_length=8)
+    # Torna o e-mail explicitamente opcional na API
+    email = serializers.EmailField(required=False, allow_blank=True, default='')
     
     class Meta:
         model = Usuario
         fields = [
             'id',
-            'username',
+            'username',  # Onde o CPF é salvo
             'email',
             'password',
             'password_confirm',
@@ -144,6 +163,18 @@ class UsuarioCreateSerializer(serializers.ModelSerializer):
             'cargo',
         ]
         read_only_fields = ['id']
+    
+    def validate_username(self, value):
+        cpf_limpo = ''.join(filter(str.isdigit, value))
+        
+        if not valida_cpf(cpf_limpo):
+            raise serializers.ValidationError('O CPF informado é inválido.')
+            
+        # Verifica duplicidade
+        if Usuario.objects.filter(username=cpf_limpo).exists():
+            raise serializers.ValidationError('Um usuário com este CPF já está cadastrado.')
+            
+        return cpf_limpo
     
     def validate(self, attrs):
         if attrs['password'] != attrs.pop('password_confirm'):
@@ -161,9 +192,18 @@ class UsuarioCreateSerializer(serializers.ModelSerializer):
 
 
 class LoginSerializer(serializers.Serializer):
-    """Serializer para login (entrada)."""
-    username = serializers.CharField(max_length=150)
+    """Serializer para login usando CPF sanitizado."""
+    username = serializers.CharField(max_length=150, label='CPF')
     password = serializers.CharField(max_length=128, write_only=True)
+
+    def validate_username(self, value):
+        # Sanitiza o CPF: remove pontos, traços e espaços
+        cpf_limpo = ''.join(filter(str.isdigit, value))
+        
+        if not valida_cpf(cpf_limpo):
+            raise serializers.ValidationError('O CPF informado é inválido.')
+            
+        return cpf_limpo
 
 
 class LoginResponseSerializer(serializers.Serializer):
