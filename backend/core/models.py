@@ -725,6 +725,7 @@ class PermissaoMenu(BaseModel):
         ('GERENTE', 'Gerente'),
         ('DIRETORIA', 'Diretoria'),
         ('ADMIN', 'Administrador'),
+        ('CONTROLE', 'Controle'),
     ]
 
     modulo = models.ForeignKey(
