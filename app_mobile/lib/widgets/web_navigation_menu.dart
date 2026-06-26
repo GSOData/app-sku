@@ -9,7 +9,7 @@ import '../screens/web/web_user_management_screen.dart';
 import '../screens/web/web_upload_screen.dart';
 import '../screens/web/web_settings_screen.dart';
 import '../screens/sku_list_screen.dart';
-import '../screens/critical_items_screen.dart';
+import '../screens/critical_menu_screen.dart';
 import '../screens/stock_report_screen.dart';
 
 /// Seções do menu web
@@ -553,7 +553,7 @@ class WebNavigationMenu extends StatelessWidget {
         screen = const SkuListScreen();
         break;
       case WebMenuSection.critical:
-        screen = const CriticalItemsScreen();
+        screen = const CriticalMenuScreen();
         break;
       case WebMenuSection.stockReport:
         screen = const StockReportScreen();
