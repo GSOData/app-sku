@@ -89,6 +89,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context);
     final usuario = authService.usuario;
+    
+    // Captura a lista de menus permitidos que veio da API
+    final menusPermitidos = authService.menusPermitidos;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -182,49 +185,52 @@ class _HomeScreenState extends State<HomeScreen> {
 
               const SizedBox(height: AppSpacing.md),
 
-              // Botões do Menu com scroll
+              // Botões do Menu com scroll dinâmico
               Expanded(
                 child: ListView(
                   children: [
-                    // Consultar Estoque - Visível para todos
-                    _buildMenuButton(
-                      context,
-                      icon: Icons.search,
-                      title: 'Consultar Estoque',
-                      subtitle: 'Buscar produto por SKU ou nome',
-                      color: AppColors.info,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const SkuListScreen(),
-                          ),
-                        );
-                      },
-                    ),
-
-                    const SizedBox(height: AppSpacing.md),
-
-                    // Itens em Criticidade - Visível para todos
-                    _buildMenuButton(
-                      context,
-                      icon: Icons.warning_amber_rounded,
-                      title: 'Itens em Criticidade',
-                      subtitle: 'Produtos bloqueados e pré-bloqueio',
-                      color: AppColors.error,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const CriticalItemsScreen(),
-                          ),
-                        );
-                      },
-                    ),
-
-                    // Estoque Inicial - Visível apenas para GERENTE e DIRETORIA
-                    if (usuario?.canViewDashboard ?? false) ...[
+                    // Consultar Estoque - Verifica a chave da API
+                    if (menusPermitidos.contains('consultar_estoque')) ...[
+                      _buildMenuButton(
+                        context,
+                        icon: Icons.search,
+                        title: 'Consultar Estoque',
+                        subtitle: 'Buscar produto por SKU ou nome',
+                        color: AppColors.info,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const SkuListScreen(),
+                            ),
+                          );
+                        },
+                      ),
                       const SizedBox(height: AppSpacing.md),
+                    ],
+
+                    // Itens em Criticidade - Verifica a chave da API
+                    if (menusPermitidos.contains('itens_criticidade')) ...[
+                      _buildMenuButton(
+                        context,
+                        icon: Icons.warning_amber_rounded,
+                        title: 'Itens em Criticidade',
+                        subtitle: 'Produtos bloqueados e pré-bloqueio',
+                        color: AppColors.error,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const CriticalItemsScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                    ],
+
+                    // Relatório de Estoque - Verifica a chave da API
+                    if (menusPermitidos.contains('relatorio_estoque')) ...[
                       _buildMenuButton(
                         context,
                         icon: Icons.inventory_2_outlined,
@@ -240,11 +246,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           );
                         },
                       ),
+                      const SizedBox(height: AppSpacing.md),
                     ],
 
-                    // Gestão de Usuários - Visível para GERENTE, DIRETORIA e ADMIN
-                    if (usuario?.canManageUsers ?? false) ...[
-                      const SizedBox(height: AppSpacing.md),
+                    // Gestão de Usuários - Verifica a chave da API
+                    if (menusPermitidos.contains('gestao_usuarios')) ...[
                       _buildMenuButton(
                         context,
                         icon: Icons.people_outline,
@@ -260,11 +266,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           );
                         },
                       ),
+                      const SizedBox(height: AppSpacing.md),
                     ],
 
-                    // Configurações - Visível para GERENTE, DIRETORIA e ADMIN
-                    if (usuario?.canManageSettings ?? false) ...[
-                      const SizedBox(height: AppSpacing.md),
+                    // Configurações - Verifica a chave da API
+                    if (menusPermitidos.contains('configuracoes')) ...[
                       _buildMenuButton(
                         context,
                         icon: Icons.settings_outlined,
@@ -280,10 +286,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           );
                         },
                       ),
+                      const SizedBox(height: AppSpacing.md),
                     ],
                     
                     // Espaçamento antes do rodapé
-                    const SizedBox(height: AppSpacing.lg),
+                    const SizedBox(height: AppSpacing.sm),
                     
                     // Rodapé de última atualização (dentro do ListView)
                     _buildUltimaAtualizacao(),
