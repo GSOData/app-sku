@@ -1296,6 +1296,7 @@ class _UserFormDialogState extends State<_UserFormDialog> {
                               DropdownMenuItem(value: 'VENDEDOR', child: Text('Vendedor')),
                               DropdownMenuItem(value: 'GERENTE', child: Text('Gerente')),
                               DropdownMenuItem(value: 'DIRETORIA', child: Text('Diretoria')),
+                              DropdownMenuItem(value: 'CONTROLE', child: Text('Controle')),
                               DropdownMenuItem(value: 'ADMIN', child: Text('Administrador')),
                             ],
                             onChanged: (v) => setState(() => _selectedPapel = v!),

@@ -9,7 +9,7 @@ import '../widgets/mobile_unit_selector.dart';
 import '../widgets/notification_bell.dart';
 import 'login_screen.dart';
 import 'sku_list_screen.dart';
-import 'critical_items_screen.dart';
+import 'critical_menu_screen.dart';
 import 'stock_report_screen.dart';
 import 'web/web_user_management_screen.dart';
 import 'web/web_settings_screen.dart';
@@ -221,7 +221,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => const CriticalItemsScreen(),
+                              builder: (_) => const CriticalMenuScreen(),
                             ),
                           );
                         },

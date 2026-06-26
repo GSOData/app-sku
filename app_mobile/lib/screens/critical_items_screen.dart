@@ -1,328 +1,51 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../models/sku_model.dart';
-import '../services/auth_service.dart';
-import '../services/sku_service.dart';
 import '../utils/constants.dart';
-import 'login_screen.dart';
 import 'sku_detail_screen.dart';
-import 'web/web_dashboard_screen.dart';
 
-/// Tela de Itens em Criticidade - mostra apenas produtos vencidos ou críticos
-class CriticalItemsScreen extends StatefulWidget {
-  const CriticalItemsScreen({super.key});
+/// Tela de Lista Filtrada - Exibe os itens que foram passados pelo Menu
+class CriticalItemsScreen extends StatelessWidget {
+  final String title;
+  final List<Sku> skus;
+  final Color themeColor;
+  final Future<void> Function() onRefreshData;
 
-  @override
-  State<CriticalItemsScreen> createState() => _CriticalItemsScreenState();
-}
-
-class _CriticalItemsScreenState extends State<CriticalItemsScreen> {
-  late SkuService _skuService;
-
-  List<Sku> _criticalSkus = [];
-  bool _isLoading = true;
-  String? _errorMessage;
-
-  // Contadores
-  int _vencidosCount = 0;
-  int _criticosCount = 0;
-  int _preBloqueioCount = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    final authService = Provider.of<AuthService>(context, listen: false);
-    _skuService = SkuService(authService: authService);
-
-    _loadCriticalItems();
-  }
-
-  Future<void> _loadCriticalItems() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      // Usa o endpoint específico de criticidade (já paginado no backend)
-      final result = await _skuService.getRelatorioCriticidade();
-      
-      // Combina bloqueados e pré-bloqueio
-      final criticalItems = [...result.bloqueados, ...result.preBloqueio];
-
-      // Ordena por prioridade (vencidos primeiro, depois críticos, depois pré-bloqueio)
-      criticalItems.sort((a, b) {
-        final prioridadeA = _getPrioridade(a.statusTexto);
-        final prioridadeB = _getPrioridade(b.statusTexto);
-
-        if (prioridadeA != prioridadeB) {
-          return prioridadeA.compareTo(prioridadeB);
-        }
-
-        // Mesmo status: ordena por dias restantes (menor primeiro)
-        final diasA = a.statusDiasRestantes ?? 999;
-        final diasB = b.statusDiasRestantes ?? 999;
-        return diasA.compareTo(diasB);
-      });
-
-      // Conta por categoria (usando dados do backend)
-      int vencidos = 0;
-      int criticos = 0;
-      int preBloqueio = result.totalPreBloqueio;
-
-      for (final sku in result.bloqueados) {
-        final status = sku.statusTexto.toLowerCase();
-        if (status == 'vencido') {
-          vencidos++;
-        } else {
-          criticos++;  // Extremamente Crítico + Bloqueado
-        }
-      }
-
-      setState(() {
-        _criticalSkus = criticalItems;
-        _vencidosCount = vencidos;
-        _criticosCount = criticos;
-        _preBloqueioCount = preBloqueio;
-      });
-    } on AuthException catch (e) {
-      _handleAuthError(e.message);
-    } catch (e) {
-      setState(() {
-        _errorMessage = e.toString().replaceFirst('Exception: ', '');
-      });
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  int _getPrioridade(String status) {
-    final s = status.toLowerCase();
-    if (s == 'vencido') return 0;
-    if (s.contains('crítico') || s == 'critico' || s.contains('bloqueado')) return 1;
-    if (s.contains('pré')) return 2;
-    return 3;
-  }
-
-  void _handleAuthError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: AppColors.error,
-      ),
-    );
-
-    final authService = Provider.of<AuthService>(context, listen: false);
-    authService.logout();
-
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
-    );
-  }
+  const CriticalItemsScreen({
+    super.key,
+    required this.title,
+    required this.skus,
+    required this.themeColor,
+    required this.onRefreshData,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final showBackButton = kIsWeb || Navigator.canPop(context);
-    
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: Text(
-          'Atenção Necessária',
+          title,
           style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
         ),
-        backgroundColor: AppColors.error,
+        backgroundColor: themeColor,
         foregroundColor: Colors.white,
         elevation: 0,
-        leading: showBackButton
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () {
-                  if (Navigator.canPop(context)) {
-                    Navigator.pop(context);
-                  } else {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (_) => const WebDashboardScreen()),
-                    );
-                  }
+      ),
+      body: skus.isEmpty
+          ? _buildEmptyState()
+          : RefreshIndicator(
+              onRefresh: onRefreshData,
+              color: themeColor,
+              child: ListView.builder(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                physics: const AlwaysScrollableScrollPhysics(),
+                itemCount: skus.length,
+                itemBuilder: (context, index) {
+                  return _buildCriticalCard(context, skus[index]);
                 },
-              )
-            : null,
-      ),
-      body: Column(
-        children: [
-          // Resumo no topo
-          _buildSummaryHeader(),
-
-          // Lista de itens
-          Expanded(
-            child: _buildContent(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSummaryHeader() {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.error,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(26),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildSummaryTile(
-              'Vencido / Sem Lote',
-              _vencidosCount,
-              Colors.black,
-              Icons.block,
-            ),
-          ),
-          Container(
-            width: 1,
-            height: 40,
-            color: Colors.white.withAlpha(77),
-          ),
-          Expanded(
-            child: _buildSummaryTile(
-              'Críticos',
-              _criticosCount,
-              Colors.white,
-              Icons.warning,
-            ),
-          ),
-          Container(
-            width: 1,
-            height: 40,
-            color: Colors.white.withAlpha(77),
-          ),
-          Expanded(
-            child: _buildSummaryTile(
-              'Pré-Bloqueio',
-              _preBloqueioCount,
-              AppColors.warning,
-              Icons.schedule,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSummaryTile(String label, int count, Color color, IconData icon) {
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(width: 4),
-            Text(
-              '$count',
-              style: GoogleFonts.poppins(
-                fontSize: AppFontSizes.headline,
-                fontWeight: FontWeight.bold,
-                color: color,
               ),
             ),
-          ],
-        ),
-        Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontSize: AppFontSizes.caption,
-            color: Colors.white.withAlpha(220),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildContent() {
-    if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppColors.error),
-      );
-    }
-
-    if (_errorMessage != null) {
-      return _buildErrorState();
-    }
-
-    if (_criticalSkus.isEmpty) {
-      return _buildEmptyState();
-    }
-
-    return RefreshIndicator(
-      onRefresh: _loadCriticalItems,
-      color: AppColors.error,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        itemCount: _criticalSkus.length,
-        itemBuilder: (context, index) {
-          return _buildCriticalCard(_criticalSkus[index]);
-        },
-      ),
-    );
-  }
-
-  Widget _buildErrorState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.error_outline,
-              size: 64,
-              color: AppColors.error.withAlpha(180),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              'Erro ao carregar',
-              style: GoogleFonts.poppins(
-                fontSize: AppFontSizes.title,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              _errorMessage!,
-              textAlign: TextAlign.center,
-              style: GoogleFonts.poppins(
-                fontSize: AppFontSizes.body,
-                color: AppColors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            ElevatedButton.icon(
-              onPressed: _loadCriticalItems,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Tentar novamente'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.error,
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -349,7 +72,7 @@ class _CriticalItemsScreenState extends State<CriticalItemsScreen> {
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
-              'Não há produtos vencidos ou em estado crítico.',
+              'Não há produtos nesta categoria.',
               textAlign: TextAlign.center,
               style: GoogleFonts.poppins(
                 fontSize: AppFontSizes.body,
@@ -362,7 +85,7 @@ class _CriticalItemsScreenState extends State<CriticalItemsScreen> {
     );
   }
 
-  Widget _buildCriticalCard(Sku sku) {
+  Widget _buildCriticalCard(BuildContext context, Sku sku) {
     final isVencido = sku.statusTexto.toLowerCase() == 'vencido';
 
     return Card(

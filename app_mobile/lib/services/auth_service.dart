@@ -104,6 +104,9 @@ class Usuario {
   
   /// Verifica se o usuário é DIRETORIA (dashboards consolidados)
   bool get isDiretoria => maxPapel == 'DIRETORIA' || isSuperuser;
+
+  /// Verifica se o usuário é CONTROLE (auditoria/controladoria)
+  bool get isControle => maxPapel == 'CONTROLE';
   
   /// Verifica se o usuário é ADMIN (acesso total ao sistema)
   bool get isAdmin => maxPapel == 'ADMIN' || isSuperuser;
@@ -137,6 +140,8 @@ class Usuario {
         return 'Diretoria';
       case 'ADMIN':
         return 'Administrador';
+      case 'CONTROLE':
+        return 'Controle';
       default:
         return 'Usuário';
     }
