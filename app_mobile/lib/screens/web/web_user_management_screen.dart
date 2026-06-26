@@ -163,7 +163,7 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
-                    children: ['Todos', 'Admin', 'Diretoria', 'Gerente', 'Vendedor']
+                    children: ['Todos', 'Admin', 'Diretoria', 'Gerente', 'Controle', 'Vendedor']
                         .map((papel) => Padding(
                               padding: const EdgeInsets.only(right: AppSpacing.xs),
                               child: ChoiceChip(
@@ -406,6 +406,9 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
         break;
       case 'Gerente':
         color = AppColors.primary;
+        break;
+      case 'Controle':
+        color = AppColors.info;
         break;
       default:
         color = AppColors.textSecondary;
@@ -798,6 +801,9 @@ class _WebUserManagementScreenState extends State<WebUserManagementScreen> {
         break;
       case 'Gerente':
         color = AppColors.primary;
+        break;
+      case 'Controle':
+        color = AppColors.info;
         break;
       default:
         color = AppColors.textSecondary;

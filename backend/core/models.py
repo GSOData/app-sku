@@ -184,6 +184,8 @@ class Usuario(AbstractUser):
             return 'DIRETORIA'
         if 'GERENTE' in papeis:
             return 'GERENTE'
+        if 'CONTROLE' in papeis:
+            return 'CONTROLE'
         if 'VENDEDOR' in papeis:
             return 'VENDEDOR'
         return 'VENDEDOR'  # Default
