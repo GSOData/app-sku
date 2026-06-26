@@ -199,6 +199,7 @@ class UsuarioUnidade(models.Model):
         ('GERENTE', 'Gerente'),        # CRUD completo na unidade
         ('DIRETORIA', 'Diretoria'),    # Dashboards e relatórios consolidados
         ('ADMIN', 'Administrador'),    # Acesso total ao sistema
+        ('CONTROLE', 'Controle'),      # Acesso a uploads e relatórios consolidados
     ]
     
     usuario = models.ForeignKey(

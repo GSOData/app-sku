@@ -811,9 +811,9 @@ class UsuarioViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        if papel not in ['VENDEDOR', 'GERENTE', 'DIRETORIA']:
+        if papel not in ['VENDEDOR', 'GERENTE', 'DIRETORIA', 'CONTROLE']:
             return Response(
-                {'error': 'Papel inválido. Use: VENDEDOR, GERENTE ou DIRETORIA'},
+                {'error': 'Papel inválido. Use: VENDEDOR, GERENTE, DIRETORIA ou CONTROLE'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
