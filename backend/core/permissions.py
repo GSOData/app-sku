@@ -224,29 +224,49 @@ class IsControle(BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
             
-        if request.user.is_superuser:
+        if getattr(request.user, 'is_superuser', False):
             return True
             
-        unidade_id = request.query_params.get('unidade_id') or request.data.get('unidade_id')
+        # Busca por 'unidade' (usado pelo Flutter nas configurações) ou 'unidade_id'
+        unidade_id = (
+            request.query_params.get('unidade') or 
+            request.query_params.get('unidade_id') or 
+            request.data.get('unidade') or 
+            request.data.get('unidade_id')
+        )
         
         if unidade_id:
             try:
                 unidade_id = int(unidade_id)
-                papel = request.user.get_papel_unidade(unidade_id)
-                return papel in ['CONTROLE', 'GERENTE', 'DIRETORIA', 'ADMIN']
-            except (ValueError, TypeError):
+                if hasattr(request.user, 'get_papel_unidade'):
+                    papel = request.user.get_papel_unidade(unidade_id)
+                    return papel in ['CONTROLE', 'GERENTE', 'DIRETORIA', 'ADMIN']
+            except (ValueError, TypeError, Exception):
                 pass
                 
-        # Fallback para o papel máximo do usuário
-        return request.user.max_papel in ['CONTROLE', 'GERENTE', 'DIRETORIA', 'ADMIN']
+        # Fallback ultra-seguro (verifica se max_papel é função ou propriedade)
+        max_papel = getattr(request.user, 'max_papel', 'VENDEDOR')
+        if callable(max_papel):
+            max_papel = max_papel()
+            
+        return max_papel in ['CONTROLE', 'GERENTE', 'DIRETORIA', 'ADMIN']
 
 class CanManageSettings(BasePermission):
     """
     Permite acesso às configurações (Gerente, Diretoria, Admin e Controle).
     """
     def has_permission(self, request, view):
-        # Reutiliza as lógicas já existentes
-        is_gerente_diretoria = IsGerenteOuDiretoria().has_permission(request, view)
-        is_controle = IsControle().has_permission(request, view)
-        
-        return is_gerente_diretoria or is_controle
+        try:
+            # Valida se é Gerente/Diretoria/Admin
+            if IsGerenteOuDiretoria().has_permission(request, view):
+                return True
+            
+            # Valida se é Controle
+            if IsControle().has_permission(request, view):
+                return True
+                
+            return False
+        except Exception as e:
+            # Se der qualquer erro no código, não crasha o servidor (evita Erro 500)
+            print(f"Erro interno de permissão: {e}")
+            return False
