@@ -215,3 +215,38 @@ class ObjectBelongsToUserUnit(BasePermission):
             return False
         
         return request.user.tem_acesso_unidade(unidade_id)
+
+class IsControle(BasePermission):
+    """
+    Permite acesso apenas a usuários com papel CONTROLE ou superior (Admin).
+    """
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+            
+        if request.user.is_superuser:
+            return True
+            
+        unidade_id = request.query_params.get('unidade_id') or request.data.get('unidade_id')
+        
+        if unidade_id:
+            try:
+                unidade_id = int(unidade_id)
+                papel = request.user.get_papel_unidade(unidade_id)
+                return papel in ['CONTROLE', 'GERENTE', 'DIRETORIA', 'ADMIN']
+            except (ValueError, TypeError):
+                pass
+                
+        # Fallback para o papel máximo do usuário
+        return request.user.max_papel in ['CONTROLE', 'GERENTE', 'DIRETORIA', 'ADMIN']
+
+class CanManageSettings(BasePermission):
+    """
+    Permite acesso às configurações (Gerente, Diretoria, Admin e Controle).
+    """
+    def has_permission(self, request, view):
+        # Reutiliza as lógicas já existentes
+        is_gerente_diretoria = IsGerenteOuDiretoria().has_permission(request, view)
+        is_controle = IsControle().has_permission(request, view)
+        
+        return is_gerente_diretoria or is_controle

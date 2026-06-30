@@ -121,7 +121,7 @@ class Usuario {
   bool get canManageUsers => isGerente || isDiretoria || isAdmin;
   
   /// Verifica se pode acessar configurações (GERENTE, DIRETORIA ou ADMIN)
-  bool get canManageSettings => isGerente || isDiretoria || isAdmin;
+  bool get canManageSettings => isGerente || isDiretoria || isAdmin || isControle;
   
   /// Verifica se pode ver dashboard consolidado (DIRETORIA ou ADMIN)
   bool get canViewConsolidated => isDiretoria || isAdmin;

@@ -25,6 +25,8 @@ from .permissions import (
     IsDiretoria,
     IsAdmin,
     IsGerenteOuDiretoria,
+    IsControle,
+    CanManageSettings,
     CanReadSKU,
     CanManageUpload,
     ObjectBelongsToUserUnit,
@@ -694,11 +696,11 @@ class ConfiguracaoAlertaViewSet(viewsets.ModelViewSet):
     ViewSet para ConfiguracaoAlerta.
     
     Permissões RBAC:
-    - Apenas GERENTE e DIRETORIA podem gerenciar configurações
+    - Apenas GERENTE, DIRETORIA, CONTROLE e ADMIN podem gerenciar configurações
     """
     queryset = ConfiguracaoAlerta.objects.filter(ativo=True)
     serializer_class = ConfiguracaoAlertaSerializer
-    permission_classes = [IsAuthenticated, IsGerenteOuDiretoria]
+    permission_classes = [IsAuthenticated, CanManageSettings]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['unidade']
 
