@@ -25,12 +25,14 @@ class CriticidadeResult {
   final int totalBloqueados;
   final int totalPreBloqueio;
   final List<Sku> bloqueados;
+  final List<Sku> riscoVencimento;
   final List<Sku> preBloqueio;
 
   CriticidadeResult({
     required this.totalBloqueados,
     required this.totalPreBloqueio,
     required this.bloqueados,
+    required this.riscoVencimento,
     required this.preBloqueio,
   });
 }
@@ -133,11 +135,6 @@ class SkuService {
   Map<String, String> get _headers => authService.authHeaders;
 
   /// Busca lista de SKUs com filtros
-  /// 
-  /// [query] - Termo de busca (codigo_sku ou nome_produto)
-  /// [unidadeId] - Filtrar por unidade de negócio (usa unidade ativa por padrão)
-  /// [categoria] - Filtrar por categoria (ex: 'CERVEJA', 'REFRIGERANTE')
-  /// [page] - Página da paginação
   Future<PaginatedResult<Sku>> getSkus({
     String? query,
     int? unidadeId,
@@ -145,10 +142,8 @@ class SkuService {
     int page = 1,
   }) async {
     try {
-      // Usa unidade ativa se não for passada explicitamente
       final effectiveUnidadeId = unidadeId ?? authService.unidadeAtiva?.id;
       
-      // Monta URL com query parameters
       final queryParams = <String, String>{
         'page': page.toString(),
       };
@@ -157,12 +152,10 @@ class SkuService {
         queryParams['search'] = query;
       }
 
-      // Sempre envia unidade_id (obrigatório no backend)
       if (effectiveUnidadeId != null) {
         queryParams['unidade_id'] = effectiveUnidadeId.toString();
       }
 
-      // Filtro por categoria
       if (categoria != null && categoria.isNotEmpty) {
         queryParams['categoria'] = categoria;
       }
@@ -176,9 +169,7 @@ class SkuService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         
-        // Verifica se é paginado ou lista direta
         if (data is Map && data.containsKey('results')) {
-          // Resposta paginada
           final results = (data['results'] as List)
               .map((json) => Sku.fromJson(json))
               .toList();
@@ -190,7 +181,6 @@ class SkuService {
             results: results,
           );
         } else if (data is List) {
-          // Lista direta (sem paginação)
           final results = data.map((json) => Sku.fromJson(json)).toList();
           return PaginatedResult(
             count: results.length,
@@ -214,7 +204,6 @@ class SkuService {
   /// Busca SKU por ID
   Future<Sku> getSkuById(int id) async {
     try {
-      // Monta URL com unidade_id obrigatório
       final queryParams = <String, String>{};
       final unidadeId = authService.unidadeAtiva?.id;
       if (unidadeId != null) {
@@ -248,14 +237,12 @@ class SkuService {
     int? unidadeId,
   }) async {
     try {
-      // Usa unidade ativa se não for passada explicitamente
       final effectiveUnidadeId = unidadeId ?? authService.unidadeAtiva?.id;
       
       final queryParams = <String, String>{
         'search': search,
       };
 
-      // Sempre envia unidade_id (obrigatório no backend)
       if (effectiveUnidadeId != null) {
         queryParams['unidade_id'] = effectiveUnidadeId.toString();
       }
@@ -289,7 +276,7 @@ class SkuService {
     }
   }
 
-  /// Busca relatório de criticidade (itens bloqueados e pré-bloqueio)
+  /// Busca relatório de criticidade (LIDO DOS LANÇAMENTOS MANUAIS DO CONTROLE)
   Future<CriticidadeResult> getRelatorioCriticidade({int? unidadeId}) async {
     try {
       final effectiveUnidadeId = unidadeId ?? authService.unidadeAtiva?.id;
@@ -313,14 +300,21 @@ class SkuService {
             ?.map((json) => Sku.fromJson(json))
             .toList() ?? [];
         
+        // CORREÇÃO: CAPTURA A NOVA LISTA DO RISCO DE VENCIMENTO DO JSON DO BACKEND
+        final riscoVencimento = (data['risco_vencimento'] as List?)
+            ?.map((json) => Sku.fromJson(json))
+            .toList() ?? [];
+        
         final preBloqueio = (data['pre_bloqueio'] as List?)
             ?.map((json) => Sku.fromJson(json))
             .toList() ?? [];
         
+        // CORREÇÃO: ENTREGA OS TRÊS MAPAS DE PRODUTOS PARA O CONSTRUTOR DA CLASSE
         return CriticidadeResult(
           totalBloqueados: data['resumo']?['total_bloqueados'] ?? bloqueados.length,
           totalPreBloqueio: data['resumo']?['total_pre_bloqueio'] ?? preBloqueio.length,
           bloqueados: bloqueados,
+          riscoVencimento: riscoVencimento,
           preBloqueio: preBloqueio,
         );
       } else if (response.statusCode == 401) {
@@ -366,9 +360,6 @@ class SkuService {
   }
 
   /// Busca lista de histórico de uploads
-  /// 
-  /// [unidadeId] - Filtrar por unidade de negócio (usa unidade ativa por padrão)
-  /// [page] - Página da paginação
   Future<PaginatedResult<HistoricoUpload>> getHistoricoUpload({
     int? unidadeId,
     int page = 1,

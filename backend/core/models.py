@@ -286,6 +286,51 @@ class ConfiguracaoAlerta(BaseModel):
         if errors:
             raise ValidationError(errors)
 
+class LancamentoCriticoManual(BaseModel):
+    """
+    Registros de criticidade inseridos manualmente pela Controladoria.
+    Este fluxo é 100% gerenciado e não sofre interferência dos uploads.
+    """
+    STATUS_CHOICES = [
+        ('BLOQUEADO', 'Bloqueado'),
+        ('PRE_BLOQUEIO', 'Pré-Bloqueio'),
+        ('RISCO_VENCIMENTO', 'Risco de Vencimento'),
+    ]
+
+    sku = models.ForeignKey(
+        SKU,
+        on_delete=models.CASCADE,
+        related_name='lancamentos_manuais',
+        verbose_name='Produto (SKU)'
+    )
+    unidade_negocio = models.ForeignKey(
+        UnidadeNegocio,
+        on_delete=models.CASCADE,
+        related_name='lancamentos_criticos',
+        verbose_name='Unidade de Negócio'
+    )
+    quantidade_critica = models.IntegerField(
+        verbose_name='Quantidade Crítica'
+    )
+    data_validade = models.DateField(
+        verbose_name='Data de Validade'
+    )
+    usuario_lancamento = models.ForeignKey(
+        Usuario,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='meus_lancamentos_criticos',
+        verbose_name='Lançado por'
+    )
+
+    class Meta:
+        verbose_name = 'Lançamento Crítico Manual'
+        verbose_name_plural = 'Lançamentos Críticos Manuais'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.sku.nome_produto} - {self.quantidade_critica} cx ({self.data_validade})"
+
 
 class SKU(BaseModel):
     """

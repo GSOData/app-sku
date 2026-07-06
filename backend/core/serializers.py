@@ -16,6 +16,7 @@ from .models import (
     LogConsulta,
     HistoricoUpload,
     ModuloMenu,
+    LancamentoCriticoManual,  # <--- ADICIONADO NOVO MODELO
 )
 
 Usuario = get_user_model()
@@ -244,7 +245,7 @@ class ConfiguracaoAlertaSerializer(serializers.ModelSerializer):
     
     def validate(self, attrs):
         """Valida hierarquia: dias_pre_bloqueio > dias_bloqueado > dias_extremamente_critico."""
-        # Para updates parciais, recupera os valores atuais como fallback
+        # Para updates parciais, recupera os valores antigos como fallback
         instance = self.instance
         dias_pre = attrs.get(
             'dias_pre_bloqueio',
@@ -645,6 +646,36 @@ class HistoricoUploadUltimoSerializer(serializers.ModelSerializer):
     class Meta:
         model = HistoricoUpload
         fields = ['data_upload', 'tipo_arquivo']
+
+
+# =============================================================================
+# LANÇAMENTOS MANUAIS (CONTROLE - NOVA SEÇÃO ADICIONADA)
+# =============================================================================
+class LancamentoCriticoManualSerializer(serializers.ModelSerializer):
+    """
+    Serializer para criação e gestão de alertas de criticidade da Controladoria.
+    """
+    sku_codigo = serializers.CharField(source='sku.codigo_sku', read_only=True)
+    sku_nome = serializers.CharField(source='sku.nome_produto', read_only=True)
+    usuario_nome = serializers.CharField(source='usuario_lancamento.get_full_name', read_only=True)
+
+    class Meta:
+        model = LancamentoCriticoManual
+        fields = [
+            'id',
+            'sku',
+            'sku_codigo',
+            'sku_nome',
+            'unidade_negocio',
+            'quantidade_critica',
+            'status_critico',
+            'usuario_lancamento',
+            'usuario_nome',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'usuario_lancamento', 'created_at', 'updated_at']
+
 
 class MenuDinamicoSerializer(serializers.ModelSerializer):
     """

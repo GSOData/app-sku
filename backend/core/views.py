@@ -43,6 +43,7 @@ from .models import (
     HistoricoUpload,
     ModuloMenu,
     PermissaoMenu,
+    LancamentoCriticoManual, # <-- ADICIONADO NOVO MODELO
 )
 from .serializers import (
     UnidadeNegocioSerializer,
@@ -62,6 +63,7 @@ from .serializers import (
     HistoricoUploadSerializer,
     HistoricoUploadUltimoSerializer,
     MenuDinamicoSerializer,
+    LancamentoCriticoManualSerializer, # <-- ADICIONADO NOVO SERIALIZER
     STATUS_CORES,
     STATUS_LABELS,
 )
@@ -291,24 +293,11 @@ class UnidadeNegocioViewSet(viewsets.ModelViewSet):
 
 
 # =============================================================================
-# SKU - CONSULTA DE VALIDADE
+# SKU - CONSULTA DE VALIDADE E BUSCA RÁPIDA
 # =============================================================================
 class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
     """
     ViewSet para SKU com busca avançada.
-    
-    Implementa:
-    - Busca por codigo_sku OU nome_produto (parâmetro 'search')
-    - Filtro por unidade_negocio
-    - Filtro por categoria
-    - Campos calculados de status
-    - Paginação de 20 itens por página
-    - Oculta vencidos para VENDEDOR
-    
-    Permissões RBAC:
-    - VENDEDOR: somente leitura (não vê itens vencidos)
-    - GERENTE: CRUD completo
-    - DIRETORIA: leitura consolidada
     """
     permission_classes = [IsAuthenticated, CanReadSKU]
     pagination_class = SKUPagination
@@ -327,10 +316,8 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
             'unidade_negocio'
         )
         
-        # Filtra pela unidade ativa (obrigatório)
         queryset = self.filter_by_unidade_ativa(queryset)
         
-        # Busca por codigo_sku OU nome_produto
         search = self.request.query_params.get('search', None)
         if search:
             queryset = queryset.filter(
@@ -341,10 +328,8 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
         return queryset.distinct()
     
     def retrieve(self, request, *args, **kwargs):
-        """Override para logar consulta de validade."""
         instance = self.get_object()
         
-        # Log de consulta
         log_consulta(
             usuario=request.user,
             tipo='VALIDADE',
@@ -357,21 +342,8 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def consulta_validade(self, request):
-        """
-        GET /api/skus/consulta_validade/?search=xxx&unidade_id=1
-        
-        Endpoint específico para a Tela de Consulta de Validade.
-        Busca por código SKU ou nome do produto.
-        
-        Parâmetros:
-        - search: Termo de busca (codigo_sku ou nome_produto)
-        - unidade_id: ID da unidade (OBRIGATÓRIO)
-        
-        Retorna lista com status calculado.
-        """
         search = request.query_params.get('search', None)
         
-        # Valida unidade ativa
         if not self.get_unidade_ativa():
             return Response(
                 {'detail': 'Parâmetro "unidade_id" é obrigatório e deve ser uma unidade válida.'},
@@ -384,10 +356,8 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # get_queryset já aplica o filtro de unidade ativa e o filtro de search
         queryset = self.get_queryset()
         
-        # Log de consulta
         log_consulta(
             usuario=request.user,
             tipo='VALIDADE',
@@ -402,20 +372,31 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
         )
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'])
+    def buscar_por_codigo(self, request):
+        """
+        GET /api/skus/buscar_por_codigo/?codigo=xxx&unidade_id=1
+        Endpoint rápido para preencher o formulário do Controle.
+        """
+        codigo = request.query_params.get('codigo')
+        unidade_id = self.get_unidade_ativa()
+
+        if not codigo or not unidade_id:
+            return Response({'error': 'Parâmetros "codigo" e "unidade_id" são obrigatórios.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        sku = SKU.objects.filter(codigo_sku=codigo, unidade_negocio_id=unidade_id, ativo=True).first()
+        if not sku:
+            return Response({'error': 'Produto não encontrado no estoque desta unidade.'}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({
+            'id': sku.id,
+            'nome_produto': sku.nome_produto,
+            'categoria': sku.categoria,
+            'qtd_estoque_atual': sku.qtd_disponivel_venda
+        })
+
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, IsAdmin])
     def limpar_banco(self, request):
-        """
-        POST /api/skus/limpar_banco/
-        
-        PERIGO: Remove TODOS os SKUs do sistema.
-        Apenas usuários ADMIN podem executar.
-        
-        Body (opcional):
-        {
-            "confirmacao": "CONFIRMAR EXCLUSAO"
-        }
-        """
-        # Exige confirmação explícita
         confirmacao = request.data.get('confirmacao', '')
         if confirmacao != 'CONFIRMAR EXCLUSAO':
             return Response(
@@ -426,13 +407,9 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Contagem antes da exclusão
         total_skus = SKU.objects.count()
-        
-        # Deleta todos os SKUs
         SKU.objects.all().delete()
         
-        # Log da operação
         log_consulta(
             usuario=request.user,
             tipo='ADMIN_LIMPAR_BANCO',
@@ -451,142 +428,131 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
 
 
 # =============================================================================
-# RELATÓRIO DE CRITICIDADE
+# LANÇAMENTOS MANUAIS (CONTROLE)
+# =============================================================================
+class LancamentoCriticoManualViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
+    """
+    ViewSet para a equipe de Controle lançar manualmente itens críticos.
+    """
+    serializer_class = LancamentoCriticoManualSerializer
+    permission_classes = [IsAuthenticated, IsControle]
+
+    def get_queryset(self):
+        queryset = LancamentoCriticoManual.objects.filter(ativo=True)
+        return self.filter_by_unidade_ativa(queryset).select_related('sku')
+
+    def perform_create(self, serializer):
+        serializer.save(usuario_lancamento=self.request.user)
+
+
+# =============================================================================
+# RELATÓRIO DE CRITICIDADE (LIDO EXCLUSIVAMENTE DOS LANÇAMENTOS MANUAIS)
 # =============================================================================
 class RelatorioCriticidadeView(UnidadeAccessMixin, APIView):
     """
     GET /api/relatorio-criticidade/?unidade_id=1
     
-    Endpoint específico para a Tela de Itens em Criticidade.
-    
-    Retorna JSON separado:
-    {
-        'bloqueados': [...],   # Extremamente Crítico + Bloqueado (+ Vencidos para não-vendedores)
-        'pre_bloqueio': [...]  # Pré-bloqueio
-    }
-    
-    RBAC:
-    - VENDEDOR: NÃO vê SKUs com status VENCIDO
-    - GERENTE/DIRETORIA: Vê todos os status incluindo VENCIDO
+    Retorna JSON formatado lendo APENAS a tabela `LancamentoCriticoManual`.
+    Calcula o status de forma dinâmica baseando-se na data_validade do calendário.
     """
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
-        unidade_id = request.query_params.get('unidade_id', None)
-        codigo_unb = request.query_params.get('codigo_unb', None)
-        
-        # Busca unidade por ID ou código
-        unidade = None
-        if unidade_id:
-            try:
-                unidade = UnidadeNegocio.objects.get(id=unidade_id, ativo=True)
-            except UnidadeNegocio.DoesNotExist:
-                return Response(
-                    {'detail': 'Unidade não encontrada.'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-        elif codigo_unb:
-            try:
-                unidade = UnidadeNegocio.objects.get(codigo_unb=codigo_unb, ativo=True)
-            except UnidadeNegocio.DoesNotExist:
-                return Response(
-                    {'detail': 'Unidade não encontrada.'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-        
-        # Verifica permissão do usuário
-        if unidade and not request.user.is_superuser:
-            if not request.user.tem_acesso_unidade(unidade.id):
-                return Response(
-                    {'detail': 'Sem permissão para esta unidade.'},
-                    status=status.HTTP_403_FORBIDDEN
-                )
-        
-        # Busca configuração de alerta
-        config = None
-        if unidade:
-            config = getattr(unidade, 'configuracao_alerta', None)
-        if not config:
-            config = ConfiguracaoAlerta.objects.filter(
-                unidade__isnull=True,
-                ativo=True
-            ).first()
-        
-        dias_pre_bloqueio = config.dias_pre_bloqueio if config else 60
-        dias_bloqueado = config.dias_bloqueado if config else 30
-        dias_extremamente_critico = config.dias_extremamente_critico if config else 7
-        
-        # Verifica se o usuário é vendedor na unidade
+        unidade_id = self.get_unidade_ativa()
+        if not unidade_id:
+            return Response(
+                {'detail': 'Parâmetro unidade_id é obrigatório e deve ser uma unidade válida que você tenha acesso.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        user = request.user
         is_vendedor = False
-        if unidade and not request.user.is_superuser:
-            is_vendedor = request.user.is_vendedor(unidade.id)
+        if not user.is_superuser:
+            is_vendedor = user.is_vendedor(unidade_id)
+
+        # 1. BUSCA AS CONFIGURAÇÕES DE DIAS DA FILIAL (Para saber as réguas de corte)
+        try:
+            unidade = UnidadeNegocio.objects.get(id=unidade_id, ativo=True)
+            config = getattr(unidade, 'configuracao_alerta', None)
+        except UnidadeNegocio.DoesNotExist:
+            config = None
+
+        if not config:
+            config = ConfiguracaoAlerta.objects.filter(unidade__isnull=True, ativo=True).first()
         
-        # Monta queryset base de SKUs com estoque disponível
-        queryset = SKU.objects.filter(
-            ativo=True,
-            qtd_disponivel_venda__gt=0,
-        ).select_related('unidade_negocio')
-        
-        if unidade:
-            queryset = queryset.filter(unidade_negocio=unidade)
-        else:
-            unidades_ids = request.user.get_unidades_ids()
-            queryset = queryset.filter(unidade_negocio_id__in=unidades_ids)
-        
-        # Classifica SKUs por status
-        bloqueados = []   # VENCIDO + EXTREMAMENTE_CRITICO + BLOQUEADO
-        pre_bloqueio = []
-        
-        for sku in queryset:
-            status_info = sku.get_status(config)
-            status_code = status_info.get('status')
+        # Réguas de corte configuradas pelo Controle
+        dias_bloqueado = config.dias_bloqueado if config else 30
+
+        # Busca lançamentos do Controle para esta unidade
+        lancamentos = LancamentoCriticoManual.objects.filter(
+            unidade_negocio_id=unidade_id,
+            ativo=True
+        ).select_related('sku')
+
+        bloqueados_list = []
+        risco_vencimento_list = []
+        pre_bloqueio_list = []
+
+        hoje = date.today()
+
+        # 2. AQUI ACONTECE A MÁGICA MATEMÁTICA DAS DATAS
+        for item in lancamentos:
+            # Calcula a diferença exata de dias entre a validade e o dia de hoje
+            dias_restantes = (item.data_validade - hoje).days
             
-            # Vendedor não vê SKUs com status VENCIDO
-            if is_vendedor and status_code == 'VENCIDO':
-                continue
-            
-            if status_code in ('VENCIDO', 'EXTREMAMENTE_CRITICO', 'BLOQUEADO'):
-                bloqueados.append(sku)
-            elif status_code == 'PRE_BLOQUEIO':
-                pre_bloqueio.append(sku)
-        
-        # Log de consulta
+            # Classificação dinâmica baseada no passar dos dias
+            if dias_restantes <= 0:
+                status_texto = 'Bloqueado'
+                status_color = '#000000'  # Preto (Vencido)
+                categoria_destino = 'BLOQUEADO'
+            elif dias_restantes <= dias_bloqueado:
+                status_texto = 'Risco de Vencimento'
+                status_color = '#F44336'  # Vermelho (Crítico)
+                categoria_destino = 'RISCO_VENCIMENTO'
+            else:
+                status_texto = 'Pré-Bloqueio'
+                status_color = '#FFC107'  # Amarelo (Alerta)
+                categoria_destino = 'PRE_BLOQUEIO'
+
+            # Monta a estrutura que o Flutter já espera receber
+            sku_data = {
+                'id': item.sku.id,
+                'lancamento_manual_id': item.id,  # Permite que o Flutter delete o lançamento direto por arrasto
+                'codigo_sku': item.sku.codigo_sku,
+                'nome_produto': item.sku.nome_produto,
+                'categoria': item.sku.categoria,
+                'qtd_disponivel_venda': f"{item.quantidade_critica} cx",  # Exibe apenas a quantidade retida
+                'status_texto': status_texto,
+                'status_color': status_color,
+                'status_dias_restantes': dias_restantes if dias_restantes > 0 else None
+            }
+
+            # Envia o item para a pasta correta baseando-se no cálculo dinâmico acima
+            if categoria_destino == 'BLOQUEADO':
+                # Vendedor NUNCA vê os bloqueados (pretos)
+                if not is_vendedor:
+                    bloqueados_list.append(sku_data)
+            elif categoria_destino == 'RISCO_VENCIMENTO':
+                risco_vencimento_list.append(sku_data)
+            elif categoria_destino == 'PRE_BLOQUEIO':
+                pre_bloqueio_list.append(sku_data)
+
+        # Log para auditoria
         log_consulta(
             usuario=request.user,
-            tipo='CRITICIDADE',
-            parametros={
-                'unidade_id': unidade.id if unidade else None,
-                'codigo_unb': codigo_unb,
-            },
+            tipo='CRITICIDADE_MANUAL',
+            parametros={'unidade_id': unidade_id},
             request=request
         )
-        
-        # Serializa
-        bloqueados_data = SKUCriticidadeSerializer(
-            bloqueados,
-            many=True,
-            context={'request': request}
-        ).data
-        
-        pre_bloqueio_data = SKUCriticidadeSerializer(
-            pre_bloqueio,
-            many=True,
-            context={'request': request}
-        ).data
-        
+
         return Response({
-            'unidade': UnidadeNegocioResumoSerializer(unidade).data if unidade else None,
-            'config': {
-                'dias_pre_bloqueio': dias_pre_bloqueio,
-                'dias_bloqueado': dias_bloqueado,
-                'dias_extremamente_critico': dias_extremamente_critico,
-            },
             'resumo': {
-                'total_bloqueados': len(bloqueados),
-                'total_pre_bloqueio': len(pre_bloqueio),
+                'total_bloqueados': len(bloqueados_list),
+                'total_pre_bloqueio': len(pre_bloqueio_list),
             },
-            'bloqueados': bloqueados_data,
-            'pre_bloqueio': pre_bloqueio_data,
+            'bloqueados': bloqueados_list,
+            'risco_vencimento': risco_vencimento_list,
+            'pre_bloqueio': pre_bloqueio_list,
         })
 
 
@@ -596,14 +562,6 @@ class RelatorioCriticidadeView(UnidadeAccessMixin, APIView):
 class EstoqueViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
     """
     ViewSet para Estoque Inicial (somente leitura).
-    
-    GET /api/estoque/
-    GET /api/estoque/{id}/
-    
-    Retorna SKUs com:
-    - Quantidade total em estoque
-    - Quantidade em trânsito
-    - Quantidade total (estoque + trânsito)
     """
     serializer_class = SKUEstoqueSerializer
     permission_classes = [IsAuthenticated]
@@ -626,10 +584,8 @@ class EstoqueViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
             )
         )
         
-        # Filtra pela unidade ativa (obrigatório)
         queryset = self.filter_by_unidade_ativa(queryset)
         
-        # Busca por codigo_sku ou nome
         search = self.request.query_params.get('search', None)
         if search:
             queryset = queryset.filter(
@@ -640,7 +596,6 @@ class EstoqueViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
         return queryset.distinct()
     
     def list(self, request, *args, **kwargs):
-        """Override para logar consulta de estoque."""
         response = super().list(request, *args, **kwargs)
         
         log_consulta(
@@ -657,11 +612,6 @@ class EstoqueViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
     
     @action(detail=False, methods=['get'])
     def resumo_geral(self, request):
-        """
-        GET /api/estoque/resumo_geral/
-        
-        Retorna totalizadores do estoque.
-        """
         queryset = self.get_queryset()
         
         total_skus = queryset.count()
@@ -694,9 +644,6 @@ class EstoqueViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
 class ConfiguracaoAlertaViewSet(viewsets.ModelViewSet):
     """
     ViewSet para ConfiguracaoAlerta.
-    
-    Permissões RBAC:
-    - Apenas GERENTE, DIRETORIA, CONTROLE e ADMIN podem gerenciar configurações
     """
     queryset = ConfiguracaoAlerta.objects.filter(ativo=True)
     serializer_class = ConfiguracaoAlertaSerializer
@@ -711,11 +658,6 @@ class ConfiguracaoAlertaViewSet(viewsets.ModelViewSet):
 class MovimentacaoEstoqueViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
     """
     ViewSet para MovimentacaoEstoque.
-    
-    Permissões RBAC:
-    - VENDEDOR: somente leitura
-    - GERENTE: CRUD completo
-    - DIRETORIA: leitura consolidada
     """
     serializer_class = MovimentacaoEstoqueSerializer
     permission_classes = [IsAuthenticated, CanReadSKU]
@@ -732,7 +674,6 @@ class MovimentacaoEstoqueViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
             'usuario'
         )
         
-        # Filtra por unidades do usuário
         unidades_ids = self.get_user_unidades()
         queryset = queryset.filter(
             Q(unidade_origem_id__in=unidades_ids) |
@@ -752,11 +693,6 @@ class MovimentacaoEstoqueViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
 class UsuarioViewSet(viewsets.ModelViewSet):
     """
     ViewSet para gestão de Usuários.
-    
-    Permissões RBAC:
-    - GERENTE: pode gerenciar usuários da sua unidade
-    - DIRETORIA: pode gerenciar usuários de todas as unidades
-    - VENDEDOR: não tem acesso
     """
     serializer_class = UsuarioSerializer
     permission_classes = [IsAuthenticated, IsGerenteOuDiretoria]
@@ -766,24 +702,17 @@ class UsuarioViewSet(viewsets.ModelViewSet):
     ordering = ['first_name', 'last_name']
     
     def get_queryset(self):
-        """
-        Filtra usuários conforme papel do usuário autenticado:
-        - DIRETORIA/Superuser: vê todos os usuários
-        - GERENTE: vê apenas usuários das suas unidades
-        """
         user = self.request.user
         
         if user.is_superuser or user.is_diretoria():
             queryset = Usuario.objects.filter(is_active=True)
         else:
-            # GERENTE vê apenas usuários das suas unidades
             unidades_ids = user.get_unidades_ids()
             queryset = Usuario.objects.filter(
                 is_active=True,
                 unidades__id__in=unidades_ids
             ).distinct()
         
-        # Filtro por unidade específica (query param)
         unidade_id = self.request.query_params.get('unidade_id')
         if unidade_id:
             queryset = queryset.filter(unidades__id=unidade_id)
@@ -797,21 +726,12 @@ class UsuarioViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def vincular_unidade(self, request, pk=None):
-        """
-        POST /api/usuarios/{id}/vincular_unidade/
-        Body: { "unidade_id": int, "papel": str }
-        
-        Vincula usuário a uma unidade com papel específico.
-        """
         usuario = self.get_object()
         unidade_id = request.data.get('unidade_id')
         papel = request.data.get('papel', 'VENDEDOR')
         
         if not unidade_id:
-            return Response(
-                {'error': 'unidade_id é obrigatório'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({'error': 'unidade_id é obrigatório'}, status=status.HTTP_400_BAD_REQUEST)
         
         if papel not in ['VENDEDOR', 'GERENTE', 'DIRETORIA', 'CONTROLE']:
             return Response(
@@ -819,7 +739,6 @@ class UsuarioViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Verifica permissão: só DIRETORIA pode criar outros DIRETORIA
         if papel == 'DIRETORIA' and not request.user.is_diretoria():
             return Response(
                 {'error': 'Apenas diretoria pode criar usuários DIRETORIA'},
@@ -829,7 +748,6 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         try:
             unidade = UnidadeNegocio.objects.get(id=unidade_id, ativo=True)
             
-            # Verifica se GERENTE tem acesso a essa unidade
             if not request.user.is_superuser and not request.user.is_diretoria():
                 if not request.user.tem_acesso_unidade(unidade.id):
                     return Response(
@@ -850,27 +768,15 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             })
             
         except UnidadeNegocio.DoesNotExist:
-            return Response(
-                {'error': 'Unidade não encontrada'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({'error': 'Unidade não encontrada'}, status=status.HTTP_404_NOT_FOUND)
     
     @action(detail=True, methods=['post'])
     def desvincular_unidade(self, request, pk=None):
-        """
-        POST /api/usuarios/{id}/desvincular_unidade/
-        Body: { "unidade_id": int }
-        
-        Remove vínculo do usuário com uma unidade.
-        """
         usuario = self.get_object()
         unidade_id = request.data.get('unidade_id')
         
         if not unidade_id:
-            return Response(
-                {'error': 'unidade_id é obrigatório'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({'error': 'unidade_id é obrigatório'}, status=status.HTTP_400_BAD_REQUEST)
         
         try:
             vinculo = UsuarioUnidade.objects.get(
@@ -878,7 +784,6 @@ class UsuarioViewSet(viewsets.ModelViewSet):
                 unidade_id=unidade_id
             )
             
-            # Verifica se GERENTE tem acesso a essa unidade
             if not request.user.is_superuser and not request.user.is_diretoria():
                 if not request.user.tem_acesso_unidade(int(unidade_id)):
                     return Response(
@@ -887,16 +792,10 @@ class UsuarioViewSet(viewsets.ModelViewSet):
                     )
             
             vinculo.delete()
-            return Response({
-                'success': True,
-                'message': 'Vínculo removido com sucesso'
-            })
+            return Response({'success': True, 'message': 'Vínculo removido com sucesso'})
             
         except UsuarioUnidade.DoesNotExist:
-            return Response(
-                {'error': 'Vínculo não encontrado'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({'error': 'Vínculo não encontrado'}, status=status.HTTP_404_NOT_FOUND)
 
 
 # =============================================================================
@@ -905,7 +804,6 @@ class UsuarioViewSet(viewsets.ModelViewSet):
 class LogConsultaViewSet(viewsets.ReadOnlyModelViewSet):
     """
     ViewSet para LogConsulta (somente leitura).
-    Apenas superusuários podem ver todos os logs.
     """
     queryset = LogConsulta.objects.all().select_related('usuario')
     serializer_class = LogConsultaSerializer
@@ -923,59 +821,29 @@ class LogConsultaViewSet(viewsets.ReadOnlyModelViewSet):
 # =============================================================================
 # UPLOAD DE ARQUIVOS - ESTOQUE FEFO
 # =============================================================================
-
 ALLOWED_UPLOAD_EXTENSIONS = {'.xlsx', '.xls', '.csv'}
 
-
 def _validar_extensao_arquivo(file, field_name: str) -> str | None:
-    """
-    Valida a extensão de um arquivo enviado via multipart/form-data.
-
-    Retorna uma mensagem de erro (str) se inválida, ou None se válida.
-    Não lança exceção para permitir coleta de todos os erros antes de responder.
-    """
     ext = '.' + file.name.rsplit('.', 1)[-1].lower() if '.' in file.name else ''
     if ext not in ALLOWED_UPLOAD_EXTENSIONS:
         allowed = ', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))
         return f'"{field_name}": formato "{ext or "sem extensão"}" não permitido. Use: {allowed}.'
     return None
 
-
 class UploadEstoqueView(APIView):
     """
     POST /api/upload/grade-020502/
-
-    Recebe 3 planilhas simultâneas via multipart/form-data e executa o
-    cálculo de estoque gerencial FEFO Reverso via UploadFefoService.
-
-    Form data obrigatório:
-    - file_020502      : Grade 020502 (.xlsx, .xls ou .csv)
-    - file_020304      : Grade 020304 (.xlsx, .xls ou .csv)
-    - file_nri         : Planilha NRI  (.xlsx, .xls ou .csv)
-    - unidade_negocio_id : ID da unidade de negócio (int)
-
-    Permissões RBAC:
-    - Apenas GERENTE pode fazer upload na sua unidade.
-
-    Registra histórico de upload em HistoricoUpload com os nomes dos 3
-    arquivos concatenados e o número de SKUs atualizados.
     """
     permission_classes = [IsAuthenticated, CanManageUpload]
 
     def post(self, request):
         from .upload_service import UploadFefoService
 
-        # ------------------------------------------------------------------
-        # 1. Coleta de parâmetros
-        # ------------------------------------------------------------------
         file_020502 = request.FILES.get('file_020502')
         file_020304 = request.FILES.get('file_020304')
         file_nri    = request.FILES.get('file_nri')
         unidade_negocio_id = request.data.get('unidade_negocio_id')
 
-        # ------------------------------------------------------------------
-        # 2. Validação de presença (falha rápida, lista todos os ausentes)
-        # ------------------------------------------------------------------
         erros_presenca = {}
         if not file_020502:
             erros_presenca['file_020502'] = 'Arquivo obrigatório não enviado.'
@@ -987,14 +855,8 @@ class UploadEstoqueView(APIView):
             erros_presenca['unidade_negocio_id'] = 'Campo obrigatório não informado.'
 
         if erros_presenca:
-            return Response(
-                {'errors': erros_presenca},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({'errors': erros_presenca}, status=status.HTTP_400_BAD_REQUEST)
 
-        # ------------------------------------------------------------------
-        # 3. Validação de extensões (coleta todos os erros antes de retornar)
-        # ------------------------------------------------------------------
         erros_extensao = {}
         for field, file in [
             ('file_020502', file_020502),
@@ -1006,14 +868,8 @@ class UploadEstoqueView(APIView):
                 erros_extensao[field] = erro
 
         if erros_extensao:
-            return Response(
-                {'errors': erros_extensao},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({'errors': erros_extensao}, status=status.HTTP_400_BAD_REQUEST)
 
-        # ------------------------------------------------------------------
-        # 4. Validação de permissão de acesso à unidade
-        # ------------------------------------------------------------------
         user = request.user
         try:
             unidade_negocio_id_int = int(unidade_negocio_id)
@@ -1025,26 +881,12 @@ class UploadEstoqueView(APIView):
 
         if not user.is_superuser:
             if not user.tem_acesso_unidade(unidade_negocio_id_int):
-                return Response(
-                    {'error': 'Sem permissão para esta unidade.'},
-                    status=status.HTTP_403_FORBIDDEN
-                )
+                return Response({'error': 'Sem permissão para esta unidade.'}, status=status.HTTP_403_FORBIDDEN)
 
-        # ------------------------------------------------------------------
-        # 5. Nome consolidado dos 3 arquivos (para HistoricoUpload)
-        # ------------------------------------------------------------------
-        nome_arquivos = ' | '.join([
-            file_020502.name,
-            file_020304.name,
-            file_nri.name,
-        ])
+        nome_arquivos = ' | '.join([file_020502.name, file_020304.name, file_nri.name])
 
-        # ------------------------------------------------------------------
-        # 6. Processamento principal
-        # ------------------------------------------------------------------
         try:
             unidade = UnidadeNegocio.objects.get(id=unidade_negocio_id_int)
-
             result = UploadFefoService.processar_estoque_fefo(
                 file_020502=file_020502,
                 file_020304=file_020304,
@@ -1070,14 +912,8 @@ class UploadEstoqueView(APIView):
                 return Response(result, status=status.HTTP_400_BAD_REQUEST)
 
         except UnidadeNegocio.DoesNotExist:
-            return Response(
-                {'error': 'Unidade de negócio não encontrada.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({'error': 'Unidade de negócio não encontrada.'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            # Tenta persistir o erro no histórico antes de propagar a resposta.
-            # O bloco interno tem try/except próprio para não mascarar o erro
-            # original caso o próprio save do histórico falhe.
             try:
                 unidade = UnidadeNegocio.objects.get(id=unidade_negocio_id_int)
                 HistoricoUpload.objects.create(
@@ -1092,10 +928,7 @@ class UploadEstoqueView(APIView):
             except Exception:
                 pass
 
-            return Response(
-                {'error': f'Erro ao processar arquivos: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({'error': f'Erro ao processar arquivos: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # =============================================================================
@@ -1104,12 +937,6 @@ class UploadEstoqueView(APIView):
 class HistoricoUploadViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
     """
     ViewSet somente leitura para HistoricoUpload.
-    
-    GET /api/historico-upload/
-    GET /api/historico-upload/{id}/
-    GET /api/historico-upload/ultimo/?unidade_id=X
-    
-    Retorna histórico de uploads ordenado do mais recente para o mais antigo.
     """
     serializer_class = HistoricoUploadSerializer
     permission_classes = [IsAuthenticated]
@@ -1120,12 +947,7 @@ class HistoricoUploadViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
     ordering = ['-created_at']
     
     def get_queryset(self):
-        queryset = HistoricoUpload.objects.filter(
-            ativo=True
-        ).select_related(
-            'usuario',
-            'unidade_negocio'
-        )
+        queryset = HistoricoUpload.objects.filter(ativo=True).select_related('usuario', 'unidade_negocio')
         
         unidade_id = self.get_unidade_ativa()
         if unidade_id:
@@ -1138,17 +960,9 @@ class HistoricoUploadViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
     
     @action(detail=False, methods=['get'])
     def ultimo(self, request):
-        """
-        GET /api/historico-upload/ultimo/?unidade_id=X
-        
-        Retorna apenas a data_upload mais recente da unidade.
-        """
         unidade_id = self.get_unidade_ativa()
         if unidade_id is None:
-            return Response(
-                {'error': 'Parâmetro unidade_id é obrigatório'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({'error': 'Parâmetro unidade_id é obrigatório'}, status=status.HTTP_400_BAD_REQUEST)
         
         ultimo_upload = HistoricoUpload.objects.filter(
             ativo=True,
@@ -1176,51 +990,31 @@ class HistoricoUploadViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
 class NotificacoesAlertaView(UnidadeAccessMixin, APIView):
     """
     GET /api/notificacoes/
-    
-    Retorna lista de SKUs em estado de alerta (Pré-Bloqueio, Bloqueado, Extremamente Crítico).
-    
-    Query Params:
-    - unidade_id: ID da unidade de negócio (obrigatório)
-    
-    Retorna dados estruturados para exibição no sininho de notificações.
     """
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
         unidade_id = self.get_unidade_ativa()
         if unidade_id is None:
-            return Response(
-                {'error': 'Parâmetro unidade_id é obrigatório e deve ser uma unidade válida'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({'error': 'Parâmetro unidade_id é obrigatório e deve ser uma unidade válida'}, status=status.HTTP_400_BAD_REQUEST)
         
         try:
             unidade = UnidadeNegocio.objects.get(id=unidade_id, ativo=True)
         except UnidadeNegocio.DoesNotExist:
-            return Response(
-                {'error': 'Unidade não encontrada'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({'error': 'Unidade não encontrada'}, status=status.HTTP_404_NOT_FOUND)
         
         config = getattr(unidade, 'configuracao_alerta', None)
         if config is None:
-            config = ConfiguracaoAlerta.objects.filter(
-                unidade__isnull=True,
-                ativo=True
-            ).first()
+            config = ConfiguracaoAlerta.objects.filter(unidade__isnull=True, ativo=True).first()
         
         dias_pre_bloqueio = config.dias_pre_bloqueio if config else 60
         dias_bloqueado = config.dias_bloqueado if config else 30
         dias_extremamente_critico = config.dias_extremamente_critico if config else 7
         
         hoje = date.today()
-        
         from datetime import timedelta
         data_limite_pre_bloqueio = hoje + timedelta(days=dias_pre_bloqueio)
         
-        # Busca SKUs com estoque e validade_inicio_range dentro da janela de alerta.
-        # Exclui vencidos (data < hoje) — notificações são apenas para itens ainda válidos
-        # mas dentro de alguma faixa crítica.
         skus_alerta = SKU.objects.filter(
             ativo=True,
             qtd_disponivel_venda__gt=0,
@@ -1275,48 +1069,34 @@ class NotificacoesAlertaView(UnidadeAccessMixin, APIView):
 class MeusMenusView(APIView):
     """
     GET /api/menus/meus-menus/?unidade_id=X
-    
-    Retorna os módulos de menu que o usuário atual tem permissão de acessar
-    na unidade informada. Superusuários recebem todos os módulos ativos globalmente.
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
         unidade_id = request.query_params.get('unidade_id')
         if not unidade_id:
-            return Response(
-                {'error': 'Parâmetro unidade_id é obrigatório.'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({'error': 'Parâmetro unidade_id é obrigatório.'}, status=status.HTTP_400_BAD_REQUEST)
             
         try:
             unidade_id = int(unidade_id)
         except ValueError:
-            return Response(
-                {'error': 'unidade_id inválido.'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({'error': 'unidade_id inválido.'}, status=status.HTTP_400_BAD_REQUEST)
             
         usuario = request.user
-        
-        # Recupera o papel que o usuário desempenha especificamente nesta filial
         papel = usuario.get_papel_unidade(unidade_id)
         
-        # Se for superuser, ignora restrições e traz tudo o que estiver ativo globalmente
         if usuario.is_superuser:
             modulos = ModuloMenu.objects.filter(globalmente_ativo=True)
         else:
             if not papel:
-                return Response([]) # Sem vínculo com a unidade = nenhum menu
+                return Response([]) 
                 
-            # Busca os IDs dos módulos que estão explicitamente visíveis para o papel dele
             modulos_permitidos_ids = PermissaoMenu.objects.filter(
                 papel=papel,
                 visivel=True,
                 modulo__globalmente_ativo=True
             ).values_list('modulo_id', flat=True)
             
-            # Filtra os módulos que estão permitidos e ativos globalmente
             modulos = ModuloMenu.objects.filter(id__in=modulos_permitidos_ids)
             
         serializer = MenuDinamicoSerializer(modulos, many=True)
