@@ -668,7 +668,7 @@ class LancamentoCriticoManualSerializer(serializers.ModelSerializer):
             'sku_nome',
             'unidade_negocio',
             'quantidade_critica',
-            'status_critico',
+            'data_validade',
             'usuario_lancamento',
             'usuario_nome',
             'created_at',

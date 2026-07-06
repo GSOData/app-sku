@@ -298,13 +298,13 @@ class LancamentoCriticoManual(BaseModel):
     ]
 
     sku = models.ForeignKey(
-        SKU,
+        'SKU',
         on_delete=models.CASCADE,
         related_name='lancamentos_manuais',
         verbose_name='Produto (SKU)'
     )
     unidade_negocio = models.ForeignKey(
-        UnidadeNegocio,
+        'UnidadeNegocio',
         on_delete=models.CASCADE,
         related_name='lancamentos_criticos',
         verbose_name='Unidade de Negócio'
@@ -316,7 +316,7 @@ class LancamentoCriticoManual(BaseModel):
         verbose_name='Data de Validade'
     )
     usuario_lancamento = models.ForeignKey(
-        Usuario,
+        'Usuario',
         on_delete=models.SET_NULL,
         null=True,
         related_name='meus_lancamentos_criticos',
