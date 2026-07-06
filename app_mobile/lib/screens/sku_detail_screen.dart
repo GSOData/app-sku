@@ -16,8 +16,7 @@ class SkuDetailScreen extends StatefulWidget {
   State<SkuDetailScreen> createState() => _SkuDetailScreenState();
 }
 
-class _SkuDetailScreenState extends State<SkuDetailScreen>
-    with SingleTickerProviderStateMixin {
+class _SkuDetailScreenState extends State<SkuDetailScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
   @override
@@ -32,73 +31,40 @@ class _SkuDetailScreenState extends State<SkuDetailScreen>
     super.dispose();
   }
 
-  void _handleAuthError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: AppColors.error,
-      ),
-    );
-
-    final authService = Provider.of<AuthService>(context, listen: false);
-    authService.logout();
-
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final sku = widget.sku;
     final dateFormat = DateFormat('dd/MM/yyyy');
+    final unidadeText = sku.unidadeMedida != null ? sku.unidadeMedida!.toLowerCase() : 'un';
 
     return Scaffold(
       backgroundColor: AppColors.background,
       body: CustomScrollView(
         slivers: [
-          // AppBar com imagem
           SliverAppBar(
             expandedHeight: 200,
             pinned: true,
             backgroundColor: AppColors.primary,
             foregroundColor: AppColors.onPrimary,
             flexibleSpace: FlexibleSpaceBar(
-              title: Text(
-                sku.codigoSku,
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w600,
-                  fontSize: AppFontSizes.subtitle,
-                ),
-              ),
+              title: Text(sku.codigoSku, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: AppFontSizes.subtitle)),
               background: _buildHeaderBackground(sku),
             ),
           ),
-
-          // Conteúdo
           SliverToBoxAdapter(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Card de informações principais
-                _buildInfoCard(sku, dateFormat),
-
-                // Tabs
+                _buildInfoCard(sku, dateFormat, unidadeText),
                 _buildTabBar(),
               ],
             ),
           ),
-
-          // Conteúdo das tabs
           SliverFillRemaining(
             child: TabBarView(
               controller: _tabController,
               children: [
-                // Nova Tab Estoque/Validade Gerencial
-                _buildValidadeEstoqueTab(sku),
-
-                // Tab Informações
+                _buildValidadeEstoqueTab(sku, dateFormat, unidadeText),
                 _buildInfoTab(sku),
               ],
             ),
@@ -112,87 +78,30 @@ class _SkuDetailScreenState extends State<SkuDetailScreen>
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Imagem ou cor de fundo
         if (sku.imagemUrl != null && sku.imagemUrl!.isNotEmpty)
-          Image.network(
-            sku.imagemUrl!,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) => _buildDefaultBackground(sku),
-          )
+          Image.network(sku.imagemUrl!, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) => _buildDefaultBackground(sku))
         else
           _buildDefaultBackground(sku),
-
-        // Gradiente para legibilidade
-        Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.transparent,
-                AppColors.primary.withAlpha(200),
-              ],
-            ),
-          ),
-        ),
-
-        // Badge de status no canto
-        Positioned(
-          top: 80,
-          right: 16,
-          child: _buildStatusBadgeLarge(sku),
-        ),
+        Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, AppColors.primary.withAlpha(200)]))),
+        Positioned(top: 80, right: 16, child: _buildStatusBadgeLarge(sku)),
       ],
     );
   }
 
   Widget _buildDefaultBackground(Sku sku) {
-    return Container(
-      color: AppColors.primary.withAlpha(180),
-      child: Center(
-        child: Icon(
-          Icons.inventory_2_outlined,
-          size: 80,
-          color: AppColors.onPrimary.withAlpha(100),
-        ),
-      ),
-    );
+    return Container(color: AppColors.primary.withAlpha(180), child: Center(child: Icon(Icons.inventory_2_outlined, size: 80, color: AppColors.onPrimary.withAlpha(100))));
   }
 
   Widget _buildStatusBadgeLarge(Sku sku) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.md,
-        vertical: AppSpacing.sm,
-      ),
-      decoration: BoxDecoration(
-        color: sku.statusColor,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(50),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+      decoration: BoxDecoration(color: sku.statusColor, borderRadius: BorderRadius.circular(AppRadius.lg), boxShadow: [BoxShadow(color: Colors.black.withAlpha(50), blurRadius: 4, offset: const Offset(0, 2))]),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            _getStatusIcon(sku.statusTexto),
-            color: Colors.white,
-            size: 16,
-          ),
+          Icon(_getStatusIcon(sku.statusTexto), color: Colors.white, size: 16),
           const SizedBox(width: 6),
-          Text(
-            sku.statusTexto,
-            style: GoogleFonts.poppins(
-              fontSize: AppFontSizes.body,
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
-            ),
-          ),
+          Text(sku.statusTexto, style: GoogleFonts.poppins(fontSize: AppFontSizes.body, fontWeight: FontWeight.w600, color: Colors.white)),
         ],
       ),
     );
@@ -200,83 +109,36 @@ class _SkuDetailScreenState extends State<SkuDetailScreen>
 
   IconData _getStatusIcon(String status) {
     switch (status.toLowerCase()) {
+      case 'bloqueado':
       case 'vencido':
         return Icons.block;
-      case 'crítico':
-      case 'extremamente crítico':
+      case 'risco de vencimento':
         return Icons.warning;
-      case 'bloqueado':
       case 'pré-bloqueio':
         return Icons.schedule;
-      case 'ok':
-        return Icons.check_circle;
       default:
-        return Icons.help_outline;
+        return Icons.info_outline;
     }
   }
 
-  Widget _buildInfoCard(Sku sku, DateFormat dateFormat) {
+  Widget _buildInfoCard(Sku sku, DateFormat dateFormat, String unidadeText) {
     return Card(
       margin: const EdgeInsets.all(AppSpacing.md),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.md),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Nome do produto
-            Text(
-              sku.nomeProduto,
-              style: GoogleFonts.poppins(
-                fontSize: AppFontSizes.title,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
-            ),
-
+            Text(sku.nomeProduto, style: GoogleFonts.poppins(fontSize: AppFontSizes.title, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
             const SizedBox(height: AppSpacing.sm),
-
-            // Unidade
             if (sku.unidadeNegocio != null)
-              _buildInfoRow(
-                Icons.business,
-                'Unidade',
-                '${sku.unidadeNegocio!.codigoUnb} - ${sku.unidadeNegocio!.nome}',
-              ),
-
+              _buildInfoRow(Icons.business, 'Unidade', '${sku.unidadeNegocio!.codigoUnb} - ${sku.unidadeNegocio!.nome}'),
             const Divider(height: AppSpacing.lg),
-
-            // Grid de informações principais
             Row(
               children: [
-                Expanded(
-                  child: _buildInfoTile(
-                    Icons.inventory,
-                    'Disp. Venda',
-                    sku.formatarQuantidade(sku.qtdDisponivelVenda),
-                    AppColors.success,
-                  ),
-                ),
-                Expanded(
-                  child: _buildInfoTile(
-                    Icons.warning_amber_rounded,
-                    'Buffer',
-                    '${sku.qtdBuffer020304}',
-                    AppColors.error,
-                  ),
-                ),
-                Expanded(
-                  child: _buildInfoTile(
-                    Icons.schedule,
-                    'Dias Restantes',
-                    sku.statusDiasRestantes != null
-                        ? '${sku.statusDiasRestantes}'
-                        : '-',
-                    sku.statusColor,
-                  ),
-                ),
+                Expanded(child: _buildInfoTile(Icons.inventory, 'Retido ($unidadeText)', sku.qtdDisponivelVenda.toString(), AppColors.error)),
+                Expanded(child: _buildInfoTile(Icons.schedule, 'Dias Restantes', sku.statusDiasRestantes != null ? '${sku.statusDiasRestantes}' : '-', sku.statusColor)),
               ],
             ),
           ],
@@ -292,23 +154,8 @@ class _SkuDetailScreenState extends State<SkuDetailScreen>
         children: [
           Icon(icon, size: 18, color: AppColors.textSecondary),
           const SizedBox(width: AppSpacing.sm),
-          Text(
-            '$label: ',
-            style: GoogleFonts.poppins(
-              fontSize: AppFontSizes.body,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: GoogleFonts.poppins(
-                fontSize: AppFontSizes.body,
-                fontWeight: FontWeight.w500,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ),
+          Text('$label: ', style: GoogleFonts.poppins(fontSize: AppFontSizes.body, color: AppColors.textSecondary)),
+          Expanded(child: Text(value, style: GoogleFonts.poppins(fontSize: AppFontSizes.body, fontWeight: FontWeight.w500, color: AppColors.textPrimary))),
         ],
       ),
     );
@@ -321,30 +168,14 @@ class _SkuDetailScreenState extends State<SkuDetailScreen>
         Icon(icon, color: color, size: 28),
         const SizedBox(height: AppSpacing.xs),
         SizedBox(
-          height: 32, // Fixa a altura máxima
+          height: 32,
           child: FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.center,
-            child: Text(
-              value,
-              style: GoogleFonts.poppins(
-                fontSize: AppFontSizes.title,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
+            child: Text(value, style: GoogleFonts.poppins(fontSize: AppFontSizes.title, fontWeight: FontWeight.bold, color: color)),
           ),
         ),
-        Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontSize: AppFontSizes.caption,
-            color: AppColors.textSecondary,
-          ),
-          textAlign: TextAlign.center,
-          maxLines: 1, // Impede que o título do quadradinho quebre
-          overflow: TextOverflow.ellipsis,
-        ),
+        Text(label, style: GoogleFonts.poppins(fontSize: AppFontSizes.caption, color: AppColors.textSecondary), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
       ],
     );
   }
@@ -357,69 +188,41 @@ class _SkuDetailScreenState extends State<SkuDetailScreen>
         labelColor: AppColors.primary,
         unselectedLabelColor: AppColors.textSecondary,
         indicatorColor: AppColors.primary,
-        labelStyle: GoogleFonts.poppins(
-          fontWeight: FontWeight.w600,
-          fontSize: AppFontSizes.body,
-        ),
+        labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: AppFontSizes.body),
         tabs: const [
-          Tab(text: 'Estoque/Validade', icon: Icon(Icons.layers)),
+          Tab(text: 'Apontamento Manual', icon: Icon(Icons.crisis_alert)),
           Tab(text: 'Informações', icon: Icon(Icons.info_outline)),
         ],
       ),
     );
   }
 
-  // --- NOVA ABA GERENCIAL (Substitui Lotes) ---
-  Widget _buildValidadeEstoqueTab(Sku sku) {
+  Widget _buildValidadeEstoqueTab(Sku sku, DateFormat formatador, String unidadeText) {
+    // Pegando a data exata em vez do range mês/ano
+    final dataExata = sku.validadeInicioRange != null ? formatador.format(sku.validadeInicioRange!) : 'Indefinida';
+
     return SingleChildScrollView(
-      // Padding extra no bottom para a barra não cortar o conteúdo
-      padding: const EdgeInsets.only(
-        left: AppSpacing.md,
-        right: AppSpacing.md,
-        top: AppSpacing.md,
-        bottom: 100.0,
-      ),
+      padding: const EdgeInsets.only(left: AppSpacing.md, right: AppSpacing.md, top: AppSpacing.md, bottom: 100.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Card de Range de Validade
           Card(
             color: AppColors.surface,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppRadius.md),
-              side: BorderSide(color: sku.statusColor.withAlpha(50), width: 1),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md), side: BorderSide(color: sku.statusColor.withAlpha(50), width: 1)),
             child: Padding(
               padding: const EdgeInsets.all(AppSpacing.lg),
               child: Column(
                 children: [
-                  Icon(Icons.calendar_month, color: sku.statusColor, size: 40),
+                  Icon(Icons.calendar_today, color: sku.statusColor, size: 40),
                   const SizedBox(height: AppSpacing.sm),
-                  Text(
-                    'Range de Validade',
-                    style: GoogleFonts.poppins(
-                      color: AppColors.textSecondary, 
-                      fontSize: AppFontSizes.body,
-                    ),
-                  ),
+                  Text('Data de Validade (Informada pelo Controle)', style: GoogleFonts.poppins(color: AppColors.textSecondary, fontSize: AppFontSizes.body), textAlign: TextAlign.center),
                   const SizedBox(height: AppSpacing.xs),
-                  Text(
-                    sku.getRangeValidadeFormatado(),
-                    style: GoogleFonts.poppins(
-                      color: AppColors.textPrimary, 
-                      fontSize: AppFontSizes.subtitle, 
-                      fontWeight: FontWeight.bold
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
+                  Text(dataExata, style: GoogleFonts.poppins(color: AppColors.textPrimary, fontSize: AppFontSizes.subtitle, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
                 ],
               ),
             ),
           ),
-          
           const SizedBox(height: AppSpacing.md),
-          
-          // Card de Composição do Estoque
           Card(
             color: AppColors.surface,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
@@ -428,46 +231,9 @@ class _SkuDetailScreenState extends State<SkuDetailScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Composição do Estoque',
-                    style: GoogleFonts.poppins(
-                      color: AppColors.textPrimary, 
-                      fontSize: AppFontSizes.subtitle, 
-                      fontWeight: FontWeight.w600
-                    ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
-                    child: Divider(),
-                  ),
-                  
-                  // Físico Total (020502)
-                  _buildEstoqueRow(
-                    'Estoque Físico Total (020502)', 
-                    sku.qtdTotal020502.toString(), 
-                    AppColors.info
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  
-                  // Buffer/Reservado (020304)
-                  _buildEstoqueRow(
-                    'Retido em Pedidos (020304)', 
-                    '- ${sku.qtdBuffer020304}', 
-                    AppColors.error
-                  ),
-                  
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
-                    child: Divider(),
-                  ),
-                  
-                  // Disponível para Venda
-                  _buildEstoqueRow(
-                    'Disponível para Venda', 
-                    sku.formatarQuantidade(sku.qtdDisponivelVenda), 
-                    AppColors.success,
-                    isBold: true,
-                  ),
+                  Text('Volume Crítico', style: GoogleFonts.poppins(color: AppColors.textPrimary, fontSize: AppFontSizes.subtitle, fontWeight: FontWeight.w600)),
+                  const Padding(padding: EdgeInsets.symmetric(vertical: AppSpacing.sm), child: Divider()),
+                  _buildEstoqueRow('Total retido nesta validade', '${sku.qtdDisponivelVenda} $unidadeText', sku.statusColor, isBold: true),
                 ],
               ),
             ),
@@ -482,73 +248,34 @@ class _SkuDetailScreenState extends State<SkuDetailScreen>
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          flex: 2,
-          child: Text(
-            label, 
-            style: GoogleFonts.poppins(
-              color: AppColors.textSecondary, 
-              fontSize: AppFontSizes.body
-            )
-          ),
-        ),
+        Expanded(flex: 2, child: Text(label, style: GoogleFonts.poppins(color: AppColors.textSecondary, fontSize: AppFontSizes.body))),
         const SizedBox(width: 8),
-        Expanded(
-          flex: 3,
-          child: Text(
-            value, 
-            textAlign: TextAlign.right,
-            style: GoogleFonts.poppins(
-              color: valueColor, 
-              fontSize: isBold ? AppFontSizes.title : AppFontSizes.body, 
-              fontWeight: isBold ? FontWeight.bold : FontWeight.w600
-            )
-          ),
-        ),
+        Expanded(flex: 3, child: Text(value, textAlign: TextAlign.right, style: GoogleFonts.poppins(color: valueColor, fontSize: isBold ? AppFontSizes.title : AppFontSizes.body, fontWeight: isBold ? FontWeight.bold : FontWeight.w600))),
       ],
     );
   }
 
   Widget _buildInfoTab(Sku sku) {
     return SingleChildScrollView(
-      // Padding extra no bottom para a barra não cortar o conteúdo
-      padding: const EdgeInsets.only(
-        left: AppSpacing.md,
-        right: AppSpacing.md,
-        top: AppSpacing.md,
-        bottom: 100.0,
-      ),
+      padding: const EdgeInsets.only(left: AppSpacing.md, right: AppSpacing.md, top: AppSpacing.md, bottom: 100.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildSection('Identificação', [
             _buildDetailRow('Código SKU', sku.codigoSku),
             _buildDetailRow('Nome', sku.nomeProduto),
-            if (sku.categoria != null)
-              _buildDetailRow('Categoria', sku.categoria!),
-            if (sku.unidadeMedida != null)
-              _buildDetailRow('Unidade de Medida', sku.unidadeMedida!),
+            if (sku.categoria != null) _buildDetailRow('Categoria', sku.categoria!),
+            if (sku.unidadeMedida != null) _buildDetailRow('Unidade de Medida', sku.unidadeMedida!),
           ]),
-
           const SizedBox(height: AppSpacing.md),
-
           if (sku.unidadeNegocio != null)
             _buildSection('Unidade de Negócio', [
               _buildDetailRow('Código', sku.unidadeNegocio!.codigoUnb),
               _buildDetailRow('Nome', sku.unidadeNegocio!.nome),
             ]),
-
           if (sku.descricao != null && sku.descricao!.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.md),
-            _buildSection('Descrição', [
-              Text(
-                sku.descricao!,
-                style: GoogleFonts.poppins(
-                  fontSize: AppFontSizes.body,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ]),
+            _buildSection('Descrição', [Text(sku.descricao!, style: GoogleFonts.poppins(fontSize: AppFontSizes.body, color: AppColors.textSecondary))]),
           ],
         ],
       ),
@@ -557,25 +284,12 @@ class _SkuDetailScreenState extends State<SkuDetailScreen>
 
   Widget _buildSection(String title, List<Widget> children) {
     return Card(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.md),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: GoogleFonts.poppins(
-                fontSize: AppFontSizes.subtitle,
-                fontWeight: FontWeight.w600,
-                color: AppColors.primary,
-              ),
-            ),
-            const Divider(),
-            ...children,
-          ],
+          children: [Text(title, style: GoogleFonts.poppins(fontSize: AppFontSizes.subtitle, fontWeight: FontWeight.w600, color: AppColors.primary)), const Divider(), ...children],
         ),
       ),
     );
@@ -587,26 +301,8 @@ class _SkuDetailScreenState extends State<SkuDetailScreen>
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              label,
-              style: GoogleFonts.poppins(
-                fontSize: AppFontSizes.body,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: GoogleFonts.poppins(
-                fontSize: AppFontSizes.body,
-                fontWeight: FontWeight.w500,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ),
+          SizedBox(width: 120, child: Text(label, style: GoogleFonts.poppins(fontSize: AppFontSizes.body, color: AppColors.textSecondary))),
+          Expanded(child: Text(value, style: GoogleFonts.poppins(fontSize: AppFontSizes.body, fontWeight: FontWeight.w500, color: AppColors.textPrimary))),
         ],
       ),
     );

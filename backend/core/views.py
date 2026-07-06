@@ -392,6 +392,7 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
             'id': sku.id,
             'nome_produto': sku.nome_produto,
             'categoria': sku.categoria,
+            'unidade_medida': sku.unidade_medida,
             'qtd_estoque_atual': sku.qtd_disponivel_venda
         })
 

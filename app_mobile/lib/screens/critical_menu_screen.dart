@@ -107,7 +107,7 @@ class _CriticalMenuScreenState extends State<CriticalMenuScreen> {
                   if (authService.usuario?.isVendedor == false) ...[
                     _buildMenuCard(
                       title: 'Bloqueado',
-                      subtitle: 'Produtos vencidos na filial',
+                      subtitle: 'Itens vencidos na filial (0 dias)',
                       count: _bloqueadosVencidos.length,
                       color: Colors.black87,
                       icon: Icons.block,
@@ -117,7 +117,7 @@ class _CriticalMenuScreenState extends State<CriticalMenuScreen> {
                   ],
                   _buildMenuCard(
                     title: 'Risco de Vencimento',
-                    subtitle: 'Críticos e bloqueados para venda futura',
+                    subtitle: 'Vencendo em até 30 dias',
                     count: _riscoVencimento.length,
                     color: AppColors.error,
                     icon: Icons.warning_amber_rounded,
@@ -126,7 +126,7 @@ class _CriticalMenuScreenState extends State<CriticalMenuScreen> {
                   const SizedBox(height: AppSpacing.md),
                   _buildMenuCard(
                     title: 'Pré-bloqueio',
-                    subtitle: 'Itens em alerta amarelo',
+                    subtitle: 'Vencendo entre 30 e 60 dias',
                     count: _preBloqueio.length,
                     color: AppColors.warning,
                     icon: Icons.schedule,
@@ -203,11 +203,17 @@ class _AddCriticalFormModalState extends State<_AddCriticalFormModal> {
   int? _foundSkuId;
   String? _skuNome;
   String? _skuCategoria;
+  String? _skuUnidadeMedida; // Variável nova para guardar cx, un, dz
   DateTime? _selectedDate;
 
   Future<void> _buscarSku() async {
     if (_skuController.text.isEmpty) return;
-    setState(() { _searchingSku = true; _skuNome = null; _foundSkuId = null; });
+    setState(() { 
+      _searchingSku = true; 
+      _skuNome = null; 
+      _foundSkuId = null; 
+      _skuUnidadeMedida = null;
+    });
     try {
       final authService = Provider.of<AuthService>(context, listen: false);
       final response = await http.get(
@@ -220,6 +226,7 @@ class _AddCriticalFormModalState extends State<_AddCriticalFormModal> {
           _foundSkuId = data['id'];
           _skuNome = data['nome_produto'];
           _skuCategoria = data['categoria'];
+          _skuUnidadeMedida = data['unidade_medida']; // Lendo a unidade de medida do backend
         });
       } else {
         _showSnackBar('Produto não localizado no estoque.', AppColors.error);
@@ -279,6 +286,10 @@ class _AddCriticalFormModalState extends State<_AddCriticalFormModal> {
   @override
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context, listen: false);
+    
+    // Formata a unidade de medida para o label do input
+    final labelUnidade = _skuUnidadeMedida != null ? _skuUnidadeMedida!.toLowerCase() : 'cx/un';
+
     return Padding(
       padding: EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, MediaQuery.of(context).viewInsets.bottom + AppSpacing.xl),
       child: Column(
@@ -307,13 +318,17 @@ class _AddCriticalFormModalState extends State<_AddCriticalFormModal> {
               ]),
             ),
             const SizedBox(height: AppSpacing.md),
-            TextField(controller: _qtdController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Quantidade Crítica (Caixas)', border: OutlineInputBorder())),
+            // Campo de quantidade atualizado para mostrar a unidade dinâmica!
+            TextField(controller: _qtdController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Quantidade Crítica ($labelUnidade)', border: const OutlineInputBorder())),
             const SizedBox(height: AppSpacing.md),
-            OutlinedButton.icon(
-              onPressed: _selecionarData,
-              icon: const Icon(Icons.calendar_month),
-              label: Text(_selectedDate == null ? 'Selecionar Data de Validade' : 'Validade: ${DateFormat('dd/MM/yyyy').format(_selectedDate!)}'),
-              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _selecionarData,
+                icon: const Icon(Icons.calendar_month),
+                label: Text(_selectedDate == null ? 'Selecionar Data de Validade' : 'Validade: ${DateFormat('dd/MM/yyyy').format(_selectedDate!)}'),
+                style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+              ),
             ),
             const SizedBox(height: AppSpacing.lg),
             SizedBox(width: double.infinity, child: ElevatedButton(onPressed: _isSaving ? null : _salvar, style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, padding: const EdgeInsets.symmetric(vertical: 16)), child: _isSaving ? const CircularProgressIndicator(color: Colors.white) : Text('Salvar Alerta', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)))),

@@ -36,7 +36,6 @@ class _CriticalItemsScreenState extends State<CriticalItemsScreen> {
 
   Future<bool> _confirmarDelecao(BuildContext context, Sku sku) async {
     final authService = Provider.of<AuthService>(context, listen: false);
-    // Vendedores não têm privilégio para remover o post-it da controladoria
     if (authService.usuario?.isVendedor == true) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Apenas a equipe de Controle pode resolver alertas.'), backgroundColor: AppColors.error));
       return false;
@@ -63,7 +62,6 @@ class _CriticalItemsScreenState extends State<CriticalItemsScreen> {
   Future<void> _removerAlertaApi(Sku sku, int index) async {
     try {
       final authService = Provider.of<AuthService>(context, listen: false);
-      // Puxa o ID do lançamento manual que mapeámos dinamicamente na View do Django
       final lancamentoId = sku.id; 
 
       final response = await http.delete(
@@ -73,7 +71,7 @@ class _CriticalItemsScreenState extends State<CriticalItemsScreen> {
 
       if (response.statusCode == 204) {
         setState(() { _localSkus.removeAt(index); });
-        widget.onRefreshData(); // Avisa o menu para recalcular os contadores numéricos grandes
+        widget.onRefreshData(); 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Alerta resolvido com sucesso!'), backgroundColor: AppColors.success));
         }
@@ -136,6 +134,9 @@ class _CriticalItemsScreenState extends State<CriticalItemsScreen> {
   }
 
   Widget _buildCriticalCard(BuildContext context, Sku sku) {
+    // Busca a unidade de medida ou deixa vazio caso não encontre
+    final unidadeText = sku.unidadeMedida != null ? ' ${sku.unidadeMedida!.toLowerCase()}' : '';
+    
     return Card(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md), side: BorderSide(color: sku.statusColor.withAlpha(100), width: 2)),
@@ -167,7 +168,7 @@ class _CriticalItemsScreenState extends State<CriticalItemsScreen> {
                   Row(children: [
                     const Icon(Icons.crisis_alert, size: 14, color: AppColors.textSecondary),
                     const SizedBox(width: 4),
-                    Text('Volume Retido: ${sku.qtdDisponivelVenda}', style: GoogleFonts.poppins(fontSize: AppFontSizes.caption, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
+                    Text('Volume Retido: ${sku.qtdDisponivelVenda}$unidadeText', style: GoogleFonts.poppins(fontSize: AppFontSizes.caption, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
                   ]),
                 ]),
               ),
