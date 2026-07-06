@@ -232,7 +232,8 @@ class IsControle(BasePermission):
             request.query_params.get('unidade') or 
             request.query_params.get('unidade_id') or 
             request.data.get('unidade') or 
-            request.data.get('unidade_id')
+            request.data.get('unidade_id') or
+            request.data.get('unidade_negocio')
         )
         
         if unidade_id:

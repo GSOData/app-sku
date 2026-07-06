@@ -32,11 +32,12 @@ from .views import (
     MovimentacaoEstoqueViewSet,
     LogConsultaViewSet,
     HistoricoUploadViewSet,
+    LancamentoCriticoManualViewSet,
     # APIViews
     RelatorioCriticidadeView,
     UploadEstoqueView,
     NotificacoesAlertaView,
-    MeusMenusView,  # <--- NOVA VIEW IMPORTADA AQUI
+    MeusMenusView,
 )
 
 app_name = 'core'
@@ -51,6 +52,7 @@ router.register(r'configuracoes', ConfiguracaoAlertaViewSet, basename='configura
 router.register(r'movimentacoes', MovimentacaoEstoqueViewSet, basename='movimentacoes')
 router.register(r'logs', LogConsultaViewSet, basename='logs')
 router.register(r'historico-upload', HistoricoUploadViewSet, basename='historico-upload')
+router.register(r'lancamentos-criticos', LancamentoCriticoManualViewSet, basename='lancamentocriticomanual')
 
 # URLs de autenticação
 auth_urls = [
