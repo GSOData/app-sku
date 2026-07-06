@@ -990,13 +990,14 @@ class HistoricoUploadViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
 class NotificacoesAlertaView(UnidadeAccessMixin, APIView):
     """
     GET /api/notificacoes/
+    Lê os lançamentos estritamente manuais para exibir no sininho.
     """
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
         unidade_id = self.get_unidade_ativa()
         if unidade_id is None:
-            return Response({'error': 'Parâmetro unidade_id é obrigatório e deve ser uma unidade válida'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Parâmetro unidade_id é obrigatório'}, status=status.HTTP_400_BAD_REQUEST)
         
         try:
             unidade = UnidadeNegocio.objects.get(id=unidade_id, ativo=True)
@@ -1012,36 +1013,36 @@ class NotificacoesAlertaView(UnidadeAccessMixin, APIView):
         dias_extremamente_critico = config.dias_extremamente_critico if config else 7
         
         hoje = date.today()
-        from datetime import timedelta
-        data_limite_pre_bloqueio = hoje + timedelta(days=dias_pre_bloqueio)
         
-        skus_alerta = SKU.objects.filter(
+        # Busca os lançamentos do Controle para o painel
+        lancamentos = LancamentoCriticoManual.objects.filter(
             ativo=True,
-            qtd_disponivel_venda__gt=0,
             unidade_negocio_id=unidade_id,
-            validade_inicio_range__isnull=False,
-            validade_inicio_range__gte=hoje,
-            validade_inicio_range__lte=data_limite_pre_bloqueio,
-        ).select_related('unidade_negocio').order_by('validade_inicio_range')
+        ).select_related('sku', 'unidade_negocio').order_by('data_validade')
         
         notificacoes = []
-        for sku in skus_alerta:
-            dias_restantes = (sku.validade_inicio_range - hoje).days
+        for item in lancamentos:
+            dias_restantes = (item.data_validade - hoje).days
             
+            # Filtra itens que estão fora da janela de alerta informada
+            if dias_restantes > dias_pre_bloqueio:
+                continue
+
+            # Enquadramento matemático estrito nas 3 abas visuais do seu componente Flutter
             if dias_restantes <= dias_extremamente_critico:
-                status_val = 'EXTREMAMENTE_CRITICO'
+                status_val = 'EXTREMAMENTE_CRITICO' # Cai na aba "Crítico"
             elif dias_restantes <= dias_bloqueado:
-                status_val = 'BLOQUEADO'
+                status_val = 'BLOQUEADO'             # Cai na aba "Bloqueado"
             else:
-                status_val = 'PRE_BLOQUEIO'
+                status_val = 'PRE_BLOQUEIO'          # Cai na aba "Pré-Bloqueio"
             
             notificacoes.append({
-                'sku_id': sku.id,
-                'sku_codigo': sku.codigo_sku,
-                'sku_nome': sku.nome_produto,
-                'data_validade': sku.validade_inicio_range,
+                'sku_id': item.sku.id,
+                'sku_codigo': item.sku.codigo_sku,
+                'sku_nome': item.sku.nome_produto,
+                'data_validade': item.data_validade,
                 'dias_restantes': dias_restantes,
-                'qtd_estoque': sku.qtd_disponivel_venda,
+                'qtd_estoque': item.quantidade_critica,
                 'status': status_val,
                 'status_label': STATUS_LABELS.get(status_val, 'Indefinido'),
                 'status_cor': STATUS_CORES.get(status_val, '#9E9E9E'),
