@@ -446,117 +446,6 @@ class LancamentoCriticoManualViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
 
 
 # =============================================================================
-# RELATÓRIO DE CRITICIDADE (LIDO EXCLUSIVAMENTE DOS LANÇAMENTOS MANUAIS)
-# =============================================================================
-class RelatorioCriticidadeView(UnidadeAccessMixin, APIView):
-    """
-    GET /api/relatorio-criticidade/?unidade_id=1
-    
-    Retorna JSON formatado lendo APENAS a tabela `LancamentoCriticoManual`.
-    Calcula o status de forma dinâmica baseando-se na data_validade do calendário.
-    """
-    permission_classes = [IsAuthenticated]
-    
-    def get(self, request):
-        unidade_id = self.get_unidade_ativa()
-        if not unidade_id:
-            return Response(
-                {'detail': 'Parâmetro unidade_id é obrigatório e deve ser uma unidade válida que você tenha acesso.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        user = request.user
-        is_vendedor = False
-        if not user.is_superuser:
-            is_vendedor = user.is_vendedor(unidade_id)
-
-        # 1. BUSCA AS CONFIGURAÇÕES DE DIAS DA FILIAL (Para saber as réguas de corte)
-        try:
-            unidade = UnidadeNegocio.objects.get(id=unidade_id, ativo=True)
-            config = getattr(unidade, 'configuracao_alerta', None)
-        except UnidadeNegocio.DoesNotExist:
-            config = None
-
-        if not config:
-            config = ConfiguracaoAlerta.objects.filter(unidade__isnull=True, ativo=True).first()
-        
-        # Réguas de corte configuradas pelo Controle
-        dias_bloqueado = config.dias_bloqueado if config else 30
-
-        # Busca lançamentos do Controle para esta unidade
-        lancamentos = LancamentoCriticoManual.objects.filter(
-            unidade_negocio_id=unidade_id,
-            ativo=True
-        ).select_related('sku')
-
-        bloqueados_list = []
-        risco_vencimento_list = []
-        pre_bloqueio_list = []
-
-        hoje = date.today()
-
-        # 2. AQUI ACONTECE A MÁGICA MATEMÁTICA DAS DATAS
-        for item in lancamentos:
-            # Calcula a diferença exata de dias entre a validade e o dia de hoje
-            dias_restantes = (item.data_validade - hoje).days
-            
-            # Classificação dinâmica baseada no passar dos dias
-            if dias_restantes <= 0:
-                status_texto = 'Bloqueado'
-                status_color = '#000000'  # Preto (Vencido)
-                categoria_destino = 'BLOQUEADO'
-            elif dias_restantes <= dias_bloqueado:
-                status_texto = 'Risco de Vencimento'
-                status_color = '#F44336'  # Vermelho (Crítico)
-                categoria_destino = 'RISCO_VENCIMENTO'
-            else:
-                status_texto = 'Pré-Bloqueio'
-                status_color = '#FFC107'  # Amarelo (Alerta)
-                categoria_destino = 'PRE_BLOQUEIO'
-
-            # Monta a estrutura que o Flutter já espera receber
-            sku_data = {
-                'id': item.sku.id,
-                'lancamento_manual_id': item.id,  # Permite que o Flutter delete o lançamento direto por arrasto
-                'codigo_sku': item.sku.codigo_sku,
-                'nome_produto': item.sku.nome_produto,
-                'categoria': item.sku.categoria,
-                'qtd_disponivel_venda': f"{item.quantidade_critica} cx",  # Exibe apenas a quantidade retida
-                'status_texto': status_texto,
-                'status_color': status_color,
-                'status_dias_restantes': dias_restantes if dias_restantes > 0 else None
-            }
-
-            # Envia o item para a pasta correta baseando-se no cálculo dinâmico acima
-            if categoria_destino == 'BLOQUEADO':
-                # Vendedor NUNCA vê os bloqueados (pretos)
-                if not is_vendedor:
-                    bloqueados_list.append(sku_data)
-            elif categoria_destino == 'RISCO_VENCIMENTO':
-                risco_vencimento_list.append(sku_data)
-            elif categoria_destino == 'PRE_BLOQUEIO':
-                pre_bloqueio_list.append(sku_data)
-
-        # Log para auditoria
-        log_consulta(
-            usuario=request.user,
-            tipo='CRITICIDADE_MANUAL',
-            parametros={'unidade_id': unidade_id},
-            request=request
-        )
-
-        return Response({
-            'resumo': {
-                'total_bloqueados': len(bloqueados_list),
-                'total_pre_bloqueio': len(pre_bloqueio_list),
-            },
-            'bloqueados': bloqueados_list,
-            'risco_vencimento': risco_vencimento_list,
-            'pre_bloqueio': pre_bloqueio_list,
-        })
-
-
-# =============================================================================
 # ESTOQUE INICIAL
 # =============================================================================
 class EstoqueViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
@@ -985,7 +874,106 @@ class HistoricoUploadViewSet(UnidadeAccessMixin, viewsets.ReadOnlyModelViewSet):
 
 
 # =============================================================================
-# NOTIFICAÇÕES DE ALERTA DE VALIDADE
+# RELATÓRIO DE CRITICIDADE (LIDO EXCLUSIVAMENTE DOS LANÇAMENTOS MANUAIS)
+# =============================================================================
+class RelatorioCriticidadeView(UnidadeAccessMixin, APIView):
+    """
+    GET /api/relatorio-criticidade/?unidade_id=1
+    Retorna os itens críticos gerenciados estritamente pelo Controle.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        unidade_id = self.get_unidade_ativa()
+        if not unidade_id:
+            return Response({'detail': 'Parâmetro unidade_id é obrigatório.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = request.user
+        is_vendedor = False
+        if not user.is_superuser:
+            is_vendedor = user.is_vendedor(unidade_id)
+
+        try:
+            unidade = UnidadeNegocio.objects.get(id=unidade_id, ativo=True)
+            config = getattr(unidade, 'configuracao_alerta', None)
+        except Exception:
+            config = None
+
+        if not config:
+            config = ConfiguracaoAlerta.objects.filter(unidade__isnull=True, ativo=True).first()
+        
+        dias_bloqueado = config.dias_bloqueado if config else 30
+
+        lancamentos = LancamentoCriticoManual.objects.filter(
+            unidade_negocio_id=unidade_id,
+            ativo=True
+        ).select_related('sku', 'unidade_negocio')
+
+        bloqueados_list = []
+        risco_vencimento_list = []
+        pre_bloqueio_list = []
+
+        hoje = date.today()
+
+        for item in lancamentos:
+            dias_restantes = (item.data_validade - hoje).days
+            
+            if dias_restantes <= 0:
+                status_texto = 'Bloqueado'
+                status_color = '#000000'
+                categoria_destino = 'BLOQUEADO'
+            elif dias_restantes <= dias_bloqueado:
+                status_texto = 'Risco de Vencimento'
+                status_color = '#F44336'
+                categoria_destino = 'RISCO_VENCIMENTO'
+            else:
+                status_texto = 'Pré-Bloqueio'
+                status_color = '#FFC107'
+                categoria_destino = 'PRE_BLOQUEIO'
+
+            # AQUI ESTÁ A CORREÇÃO DO CELULAR: Injetamos campos zerados para satisfazer o Flutter!
+            sku_data = {
+                'id': item.id,  # ID do Lancamento
+                'codigo_sku': item.sku.codigo_sku,
+                'nome_produto': item.sku.nome_produto,
+                'categoria': item.sku.categoria,
+                'unidade_medida': item.sku.unidade_medida,
+                'fator_conversao': item.sku.fator_conversao,
+                'qtd_total_020502': 0,  # <-- O Celular quebrava aqui!
+                'qtd_buffer_020304': 0, # <-- E aqui!
+                'qtd_disponivel_venda': item.quantidade_critica, 
+                'validade_inicio_range': item.data_validade.strftime('%Y-%m-%d'),
+                'validade_fim_range': item.data_validade.strftime('%Y-%m-%d'),
+                'dias_restantes': dias_restantes,
+                'status_texto': status_texto,
+                'status_color': status_color,
+                'imagem_url': None,
+                'unidade_codigo': item.unidade_negocio.codigo_unb,
+            }
+
+            if categoria_destino == 'BLOQUEADO':
+                if not is_vendedor:
+                    bloqueados_list.append(sku_data)
+            elif categoria_destino == 'RISCO_VENCIMENTO':
+                risco_vencimento_list.append(sku_data)
+            elif categoria_destino == 'PRE_BLOQUEIO':
+                pre_bloqueio_list.append(sku_data)
+
+        log_consulta(usuario=request.user, tipo='CRITICIDADE', parametros={'unidade_id': unidade_id}, request=request)
+
+        return Response({
+            'resumo': {
+                'total_bloqueados': len(bloqueados_list),
+                'total_pre_bloqueio': len(pre_bloqueio_list),
+            },
+            'bloqueados': bloqueados_list,
+            'risco_vencimento': risco_vencimento_list,
+            'pre_bloqueio': pre_bloqueio_list,
+        })
+
+
+# =============================================================================
+# NOTIFICAÇÕES DE ALERTA DE VALIDADE (SININHO ALINHADO)
 # =============================================================================
 class NotificacoesAlertaView(UnidadeAccessMixin, APIView):
     """
@@ -1001,11 +989,11 @@ class NotificacoesAlertaView(UnidadeAccessMixin, APIView):
         
         try:
             unidade = UnidadeNegocio.objects.get(id=unidade_id, ativo=True)
-        except UnidadeNegocio.DoesNotExist:
-            return Response({'error': 'Unidade não encontrada'}, status=status.HTTP_404_NOT_FOUND)
+            config = getattr(unidade, 'configuracao_alerta', None)
+        except Exception:
+            config = None
         
-        config = getattr(unidade, 'configuracao_alerta', None)
-        if config is None:
+        if not config:
             config = ConfiguracaoAlerta.objects.filter(unidade__isnull=True, ativo=True).first()
         
         dias_pre_bloqueio = config.dias_pre_bloqueio if config else 60
@@ -1014,7 +1002,6 @@ class NotificacoesAlertaView(UnidadeAccessMixin, APIView):
         
         hoje = date.today()
         
-        # Busca os lançamentos do Controle para o painel
         lancamentos = LancamentoCriticoManual.objects.filter(
             ativo=True,
             unidade_negocio_id=unidade_id,
@@ -1024,43 +1011,44 @@ class NotificacoesAlertaView(UnidadeAccessMixin, APIView):
         for item in lancamentos:
             dias_restantes = (item.data_validade - hoje).days
             
-            # Filtra itens que estão fora da janela de alerta informada
             if dias_restantes > dias_pre_bloqueio:
                 continue
 
-            # Enquadramento matemático estrito nas 3 abas visuais do seu componente Flutter
-            if dias_restantes <= dias_extremamente_critico:
-                status_val = 'EXTREMAMENTE_CRITICO' # Cai na aba "Crítico"
+            if dias_restantes <= 0:
+                status_val = 'VENCIDO'
+            elif dias_restantes <= dias_extremamente_critico:
+                status_val = 'EXTREMAMENTE_CRITICO'
             elif dias_restantes <= dias_bloqueado:
-                status_val = 'BLOQUEADO'             # Cai na aba "Bloqueado"
+                status_val = 'BLOQUEADO'
             else:
-                status_val = 'PRE_BLOQUEIO'          # Cai na aba "Pré-Bloqueio"
+                status_val = 'PRE_BLOQUEIO'
             
             notificacoes.append({
                 'sku_id': item.sku.id,
                 'sku_codigo': item.sku.codigo_sku,
                 'sku_nome': item.sku.nome_produto,
-                'data_validade': item.data_validade,
+                'data_validade': item.data_validade.strftime('%Y-%m-%d'), # Formato de string blindado
                 'dias_restantes': dias_restantes,
                 'qtd_estoque': item.quantidade_critica,
                 'status': status_val,
                 'status_label': STATUS_LABELS.get(status_val, 'Indefinido'),
                 'status_cor': STATUS_CORES.get(status_val, '#9E9E9E'),
-                'unidade_id': unidade.id,
-                'unidade_codigo': unidade.codigo_unb,
-                'unidade_nome': unidade.nome,
+                'unidade_id': item.unidade_negocio.id,
+                'unidade_codigo': item.unidade_negocio.codigo_unb,
+                'unidade_nome': item.unidade_negocio.nome,
             })
         
         resumo = {
-            'extremamente_critico': sum(1 for n in notificacoes if n['status'] == 'EXTREMAMENTE_CRITICO'),
+            'extremamente_critico': sum(1 for n in notificacoes if n['status'] in ['EXTREMAMENTE_CRITICO', 'VENCIDO']),
             'bloqueado': sum(1 for n in notificacoes if n['status'] == 'BLOQUEADO'),
             'pre_bloqueio': sum(1 for n in notificacoes if n['status'] == 'PRE_BLOQUEIO'),
             'total': len(notificacoes),
         }
         
+        # AQUI ESTÁ A CORREÇÃO DO SININHO: Enviamos o dicionário puro, fugindo da censura do Serializer
         return Response({
             'resumo': resumo,
-            'notificacoes': NotificacaoAlertaSerializer(notificacoes, many=True).data,
+            'notificacoes': notificacoes, 
         })
 
 
