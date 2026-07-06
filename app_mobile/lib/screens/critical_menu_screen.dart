@@ -107,7 +107,7 @@ class _CriticalMenuScreenState extends State<CriticalMenuScreen> {
                   if (authService.usuario?.isVendedor == false) ...[
                     _buildMenuCard(
                       title: 'Bloqueado',
-                      subtitle: 'Itens vencidos na filial (0 dias)',
+                      subtitle: 'Itens vencidos (0 dias)',
                       count: _bloqueadosVencidos.length,
                       color: Colors.black87,
                       icon: Icons.block,
