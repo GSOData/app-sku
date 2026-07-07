@@ -9,8 +9,14 @@ import 'login_screen.dart';
 
 class SkuDetailScreen extends StatefulWidget {
   final Sku sku;
+  // NOVO: Interruptor que define se a tela está no modo Controle ou Estoque Geral
+  final bool isCriticalItem;
 
-  const SkuDetailScreen({super.key, required this.sku});
+  const SkuDetailScreen({
+    super.key, 
+    required this.sku, 
+    this.isCriticalItem = false, // Por padrão, é falso (Estoque Geral)
+  });
 
   @override
   State<SkuDetailScreen> createState() => _SkuDetailScreenState();
@@ -64,7 +70,10 @@ class _SkuDetailScreenState extends State<SkuDetailScreen> with SingleTickerProv
             child: TabBarView(
               controller: _tabController,
               children: [
-                _buildValidadeEstoqueTab(sku, dateFormat, unidadeText),
+                // Renderiza a aba dinamicamente com base no interruptor!
+                widget.isCriticalItem 
+                    ? _buildValidadeManualTab(sku, dateFormat, unidadeText)
+                    : _buildValidadeEstoqueTab(sku),
                 _buildInfoTab(sku),
               ],
             ),
@@ -113,11 +122,13 @@ class _SkuDetailScreenState extends State<SkuDetailScreen> with SingleTickerProv
       case 'vencido':
         return Icons.block;
       case 'risco de vencimento':
+      case 'crítico':
+      case 'extremamente crítico':
         return Icons.warning;
       case 'pré-bloqueio':
         return Icons.schedule;
       default:
-        return Icons.info_outline;
+        return Icons.check_circle;
     }
   }
 
@@ -135,11 +146,21 @@ class _SkuDetailScreenState extends State<SkuDetailScreen> with SingleTickerProv
             if (sku.unidadeNegocio != null)
               _buildInfoRow(Icons.business, 'Unidade', '${sku.unidadeNegocio!.codigoUnb} - ${sku.unidadeNegocio!.nome}'),
             const Divider(height: AppSpacing.lg),
+            
+            // RENDENRIZAÇÃO CONDICIONAL DOS QUADRADINHOS
             Row(
-              children: [
-                Expanded(child: _buildInfoTile(Icons.inventory, 'Retido ($unidadeText)', sku.qtdDisponivelVenda.toString(), AppColors.error)),
-                Expanded(child: _buildInfoTile(Icons.schedule, 'Dias Restantes', sku.statusDiasRestantes != null ? '${sku.statusDiasRestantes}' : '-', sku.statusColor)),
-              ],
+              children: widget.isCriticalItem 
+              ? [
+                  // MODO CONTROLE MANUAL
+                  Expanded(child: _buildInfoTile(Icons.inventory, 'Retido ($unidadeText)', sku.qtdDisponivelVenda.toString(), AppColors.error)),
+                  Expanded(child: _buildInfoTile(Icons.schedule, 'Dias Restantes', sku.statusDiasRestantes != null ? '${sku.statusDiasRestantes}' : '-', sku.statusColor)),
+                ]
+              : [
+                  // MODO ESTOQUE GERAL
+                  Expanded(child: _buildInfoTile(Icons.inventory, 'Disp. Venda', sku.qtdDisponivelVenda.toString(), AppColors.success)),
+                  Expanded(child: _buildInfoTile(Icons.warning_amber_rounded, 'Buffer', '${sku.qtdBuffer020304}', AppColors.error)),
+                  Expanded(child: _buildInfoTile(Icons.schedule, 'Dias Restantes', sku.statusDiasRestantes != null ? '${sku.statusDiasRestantes}' : '-', sku.statusColor)),
+                ],
             ),
           ],
         ),
@@ -189,16 +210,76 @@ class _SkuDetailScreenState extends State<SkuDetailScreen> with SingleTickerProv
         unselectedLabelColor: AppColors.textSecondary,
         indicatorColor: AppColors.primary,
         labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: AppFontSizes.body),
-        tabs: const [
-          Tab(text: 'Apontamento Manual', icon: Icon(Icons.crisis_alert)),
-          Tab(text: 'Informações', icon: Icon(Icons.info_outline)),
+        tabs: [
+          Tab(
+            // Nome da aba dinâmico
+            text: widget.isCriticalItem ? 'Apontamento Manual' : 'Estoque/Validade', 
+            icon: Icon(widget.isCriticalItem ? Icons.crisis_alert : Icons.layers)
+          ),
+          const Tab(text: 'Informações', icon: Icon(Icons.info_outline)),
         ],
       ),
     );
   }
 
-  Widget _buildValidadeEstoqueTab(Sku sku, DateFormat formatador, String unidadeText) {
-    // Pegando a data exata em vez do range mês/ano
+  // =========================================================================
+  // ABA DO ESTOQUE GERAL (PLANILHA)
+  // =========================================================================
+  Widget _buildValidadeEstoqueTab(Sku sku) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(left: AppSpacing.md, right: AppSpacing.md, top: AppSpacing.md, bottom: 100.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Card(
+            color: AppColors.surface,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md), side: BorderSide(color: sku.statusColor.withAlpha(50), width: 1)),
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              child: Column(
+                children: [
+                  Icon(Icons.calendar_month, color: sku.statusColor, size: 40),
+                  const SizedBox(height: AppSpacing.sm),
+                  Text('Range de Validade', style: GoogleFonts.poppins(color: AppColors.textSecondary, fontSize: AppFontSizes.body)),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    sku.getRangeValidadeFormatado(), 
+                    style: GoogleFonts.poppins(color: AppColors.textPrimary, fontSize: AppFontSizes.subtitle, fontWeight: FontWeight.bold), 
+                    textAlign: TextAlign.center
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Card(
+            color: AppColors.surface,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Composição do Estoque', style: GoogleFonts.poppins(color: AppColors.textPrimary, fontSize: AppFontSizes.subtitle, fontWeight: FontWeight.w600)),
+                  const Padding(padding: EdgeInsets.symmetric(vertical: AppSpacing.sm), child: Divider()),
+                  _buildEstoqueRow('Estoque Físico Total (020502)', sku.qtdTotal020502.toString(), AppColors.info),
+                  const SizedBox(height: AppSpacing.sm),
+                  _buildEstoqueRow('Retido em Pedidos (020304)', '- ${sku.qtdBuffer020304}', AppColors.error),
+                  const Padding(padding: EdgeInsets.symmetric(vertical: AppSpacing.sm), child: Divider()),
+                  _buildEstoqueRow('Disponível para Venda', sku.qtdDisponivelVenda.toString(), AppColors.success, isBold: true),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // =========================================================================
+  // ABA DO LANÇAMENTO MANUAL (CONTROLE)
+  // =========================================================================
+  Widget _buildValidadeManualTab(Sku sku, DateFormat formatador, String unidadeText) {
     final dataExata = sku.validadeInicioRange != null ? formatador.format(sku.validadeInicioRange!) : 'Indefinida';
 
     return SingleChildScrollView(

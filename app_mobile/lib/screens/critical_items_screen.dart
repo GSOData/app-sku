@@ -142,7 +142,7 @@ class _CriticalItemsScreenState extends State<CriticalItemsScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md), side: BorderSide(color: sku.statusColor.withAlpha(100), width: 2)),
       elevation: 3,
       child: InkWell(
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SkuDetailScreen(sku: sku))),
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SkuDetailScreen(sku: sku, isCriticalItem: true))),
         borderRadius: BorderRadius.circular(AppRadius.md),
         child: Column(children: [
           Container(
