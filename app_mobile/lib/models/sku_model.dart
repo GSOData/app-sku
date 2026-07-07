@@ -59,6 +59,7 @@ class Sku {
 
   // --- Status calculados pelo backend ---
   final String statusTexto;
+  final String statusTextoDetalhe; // <--- 1. NOVO CAMPO ADICIONADO
   final String statusCor;
   final int? statusDiasRestantes;
 
@@ -80,12 +81,26 @@ class Sku {
     this.validadeInicioRange,
     this.validadeFimRange,
     this.statusTexto = 'Indefinido',
+    this.statusTextoDetalhe = 'Indefinido', // <--- INICIALIZADO AQUI
     this.statusCor = '#9E9E9E',
     this.statusDiasRestantes,
     this.ativo = true,
   });
 
   factory Sku.fromJson(Map<String, dynamic> json) {
+    // --- 2. INÍCIO DA MÁGICA DOS LOTES MISTOS ---
+    String rawStatus = json['status_texto'] ?? 'Indefinido';
+    String textoLista = rawStatus;
+    String textoDetalhe = rawStatus;
+
+    // Se o backend mandou o sinal, nós dividimos o comportamento!
+    if (rawStatus.startsWith('MIX:')) {
+      String baseLabel = rawStatus.substring(4); // Arranca fora o "MIX:"
+      textoLista = 'Atenção';
+      textoDetalhe = 'Parte dos lotes em alerta ($baseLabel)';
+    }
+    // --- FIM DA MÁGICA ---
+
     return Sku(
       id: json['id'] ?? 0,
       codigoSku: json['codigo_sku'] ?? '',
@@ -109,7 +124,8 @@ class Sku {
       validadeFimRange: json['validade_fim_range'] != null
           ? DateTime.tryParse(json['validade_fim_range'])
           : null,
-      statusTexto: json['status_texto'] ?? 'Indefinido',
+      statusTexto: textoLista,           // <--- RECEBE O TEXTO CURTO
+      statusTextoDetalhe: textoDetalhe,  // <--- RECEBE O TEXTO LONGO
       statusCor: json['status_cor'] ?? '#9E9E9E',
       statusDiasRestantes:
           json['status_dias_restantes'] ?? json['dias_restantes'],
@@ -129,21 +145,18 @@ class Sku {
     return Color(int.parse(padded, radix: 16));
   }
 
-  bool get isVencido =>
-      statusTexto.toLowerCase() == 'vencido';
+  // 3. IMPORTANTE: Validadores agora leem o texto detalhado para não quebrar a lógica!
+  bool get isVencido => statusTextoDetalhe.toLowerCase().contains('vencido');
 
-  bool get isExtremamenteCritico =>
-      statusTexto.toLowerCase().contains('extremamente');
+  bool get isExtremamenteCritico => statusTextoDetalhe.toLowerCase().contains('crítico');
 
-  bool get isBloqueado =>
-      statusTexto.toLowerCase() == 'bloqueado';
+  bool get isBloqueado => statusTextoDetalhe.toLowerCase().contains('bloqueado');
 
-  bool get isPreBloqueio =>
-      statusTexto.toLowerCase().contains('pré');
+  bool get isPreBloqueio => statusTextoDetalhe.toLowerCase().contains('pré');
 
-  bool get isOk => statusTexto.toLowerCase() == 'ok';
+  bool get isOk => statusTextoDetalhe.toLowerCase() == 'ok';
 
-  bool get semEstoque => statusTexto.toLowerCase().contains('sem estoque');
+  bool get semEstoque => statusTextoDetalhe.toLowerCase().contains('sem estoque');
 
   /// Retorna uma string amigável com o range de validade.
   String getRangeValidadeFormatado() {

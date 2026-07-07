@@ -324,10 +324,33 @@ class SKUSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
     
     def get_status_texto(self, obj) -> str:
-        """Retorna o texto do status para exibição no Frontend."""
+        """Retorna o texto do status com inteligência para Lotes Mistos."""
+        from datetime import date
+        from core.models import ConfiguracaoAlerta
+        
         status_info = obj.get_status()
-        status = status_info.get('status', 'SEM_ESTOQUE')
-        return STATUS_LABELS.get(status, 'Indefinido')
+        status_code = status_info.get('status', 'SEM_ESTOQUE')
+        base_label = STATUS_LABELS.get(status_code, 'Indefinido')
+        
+        # Aplica a regra APENAS para itens em alerta do Estoque Geral
+        if status_code in ['VENCIDO', 'EXTREMAMENTE_CRITICO', 'BLOQUEADO', 'PRE_BLOQUEIO']:
+            # Se o item possui mais de um lote (datas diferentes)
+            if obj.validade_inicio_range and obj.validade_fim_range:
+                if obj.validade_inicio_range != obj.validade_fim_range:
+                    
+                    # Busca o limite de segurança da filial (Dias para Pré-Bloqueio)
+                    config = getattr(obj.unidade_negocio, 'configuracao_alerta', None) if obj.unidade_negocio else None
+                    if not config:
+                        config = ConfiguracaoAlerta.objects.filter(unidade__isnull=True, ativo=True).first()
+                    
+                    dias_pre = config.dias_pre_bloqueio if config else 60
+                    dias_fim = (obj.validade_fim_range - date.today()).days
+                    
+                    # A REGRA DE OURO: Se o lote mais novo (maior validade) está fora da zona de alerta (OK)
+                    if dias_fim > dias_pre:
+                        return f"MIX:{base_label}" # Envia um sinal secreto para o Flutter
+                        
+        return base_label
     
     def get_status_cor(self, obj) -> str:
         """Retorna a cor hexadecimal do status para o Frontend."""
@@ -388,9 +411,33 @@ class SKUListSerializer(serializers.ModelSerializer):
         ]
         
     def get_status_texto(self, obj) -> str:
+        """Retorna o texto do status com inteligência para Lotes Mistos."""
+        from datetime import date
+        from core.models import ConfiguracaoAlerta
+        
         status_info = obj.get_status()
-        status = status_info.get('status', 'SEM_ESTOQUE')
-        return STATUS_LABELS.get(status, 'Indefinido')
+        status_code = status_info.get('status', 'SEM_ESTOQUE')
+        base_label = STATUS_LABELS.get(status_code, 'Indefinido')
+        
+        # Aplica a regra APENAS para itens em alerta do Estoque Geral
+        if status_code in ['VENCIDO', 'EXTREMAMENTE_CRITICO', 'BLOQUEADO', 'PRE_BLOQUEIO']:
+            # Se o item possui mais de um lote (datas diferentes)
+            if obj.validade_inicio_range and obj.validade_fim_range:
+                if obj.validade_inicio_range != obj.validade_fim_range:
+                    
+                    # Busca o limite de segurança da filial (Dias para Pré-Bloqueio)
+                    config = getattr(obj.unidade_negocio, 'configuracao_alerta', None) if obj.unidade_negocio else None
+                    if not config:
+                        config = ConfiguracaoAlerta.objects.filter(unidade__isnull=True, ativo=True).first()
+                    
+                    dias_pre = config.dias_pre_bloqueio if config else 60
+                    dias_fim = (obj.validade_fim_range - date.today()).days
+                    
+                    # A REGRA DE OURO: Se o lote mais novo (maior validade) está fora da zona de alerta (OK)
+                    if dias_fim > dias_pre:
+                        return f"MIX:{base_label}" # Envia um sinal secreto para o Flutter
+                        
+        return base_label
     
     def get_status_cor(self, obj) -> str:
         status_info = obj.get_status()

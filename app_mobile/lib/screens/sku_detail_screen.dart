@@ -110,7 +110,7 @@ class _SkuDetailScreenState extends State<SkuDetailScreen> with SingleTickerProv
         children: [
           Icon(_getStatusIcon(sku.statusTexto), color: Colors.white, size: 16),
           const SizedBox(width: 6),
-          Text(sku.statusTexto, style: GoogleFonts.poppins(fontSize: AppFontSizes.body, fontWeight: FontWeight.w600, color: Colors.white)),
+          Text(sku.statusTextoDetalhe, style: GoogleFonts.poppins(fontSize: AppFontSizes.body, fontWeight: FontWeight.w600, color: Colors.white)),
         ],
       ),
     );
