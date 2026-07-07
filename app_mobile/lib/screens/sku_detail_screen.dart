@@ -73,7 +73,7 @@ class _SkuDetailScreenState extends State<SkuDetailScreen> with SingleTickerProv
                 // Renderiza a aba dinamicamente com base no interruptor!
                 widget.isCriticalItem 
                     ? _buildValidadeManualTab(sku, dateFormat, unidadeText)
-                    : _buildValidadeEstoqueTab(sku),
+                    : _buildValidadeEstoqueTab(sku, unidadeText),
                 _buildInfoTab(sku),
               ],
             ),
@@ -117,19 +117,11 @@ class _SkuDetailScreenState extends State<SkuDetailScreen> with SingleTickerProv
   }
 
   IconData _getStatusIcon(String status) {
-    switch (status.toLowerCase()) {
-      case 'bloqueado':
-      case 'vencido':
-        return Icons.block;
-      case 'risco de vencimento':
-      case 'crítico':
-      case 'extremamente crítico':
-        return Icons.warning;
-      case 'pré-bloqueio':
-        return Icons.schedule;
-      default:
-        return Icons.check_circle;
-    }
+    final s = status.toLowerCase();
+    if (s.contains('bloqueado') || s.contains('vencido')) return Icons.block;
+    if (s.contains('risco de vencimento') || s.contains('crítico')) return Icons.warning;
+    if (s.contains('pré-bloqueio')) return Icons.schedule;
+    return Icons.check_circle;
   }
 
   Widget _buildInfoCard(Sku sku, DateFormat dateFormat, String unidadeText) {
@@ -147,18 +139,18 @@ class _SkuDetailScreenState extends State<SkuDetailScreen> with SingleTickerProv
               _buildInfoRow(Icons.business, 'Unidade', '${sku.unidadeNegocio!.codigoUnb} - ${sku.unidadeNegocio!.nome}'),
             const Divider(height: AppSpacing.lg),
             
-            // RENDENRIZAÇÃO CONDICIONAL DOS QUADRADINHOS
+            // RENDENRIZAÇÃO CONDICIONAL DOS QUADRADINHOS (Usando FormatarQuantidade!)
             Row(
               children: widget.isCriticalItem 
               ? [
                   // MODO CONTROLE MANUAL
-                  Expanded(child: _buildInfoTile(Icons.inventory, 'Retido ($unidadeText)', sku.qtdDisponivelVenda.toString(), AppColors.error)),
+                  Expanded(child: _buildInfoTile(Icons.inventory, 'Retido', '${sku.formatarQuantidade(sku.qtdDisponivelVenda)} $unidadeText', AppColors.error)),
                   Expanded(child: _buildInfoTile(Icons.schedule, 'Dias Restantes', sku.statusDiasRestantes != null ? '${sku.statusDiasRestantes}' : '-', sku.statusColor)),
                 ]
               : [
                   // MODO ESTOQUE GERAL
-                  Expanded(child: _buildInfoTile(Icons.inventory, 'Disp. Venda', sku.qtdDisponivelVenda.toString(), AppColors.success)),
-                  Expanded(child: _buildInfoTile(Icons.warning_amber_rounded, 'Buffer', '${sku.qtdBuffer020304}', AppColors.error)),
+                  Expanded(child: _buildInfoTile(Icons.inventory, 'Disp. Venda', '${sku.formatarQuantidade(sku.qtdDisponivelVenda)} $unidadeText', AppColors.success)),
+                  Expanded(child: _buildInfoTile(Icons.warning_amber_rounded, 'Buffer', '${sku.formatarQuantidade(sku.qtdBuffer020304)} $unidadeText', AppColors.error)),
                   Expanded(child: _buildInfoTile(Icons.schedule, 'Dias Restantes', sku.statusDiasRestantes != null ? '${sku.statusDiasRestantes}' : '-', sku.statusColor)),
                 ],
             ),
@@ -212,7 +204,6 @@ class _SkuDetailScreenState extends State<SkuDetailScreen> with SingleTickerProv
         labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: AppFontSizes.body),
         tabs: [
           Tab(
-            // Nome da aba dinâmico
             text: widget.isCriticalItem ? 'Apontamento Manual' : 'Estoque/Validade', 
             icon: Icon(widget.isCriticalItem ? Icons.crisis_alert : Icons.layers)
           ),
@@ -225,7 +216,7 @@ class _SkuDetailScreenState extends State<SkuDetailScreen> with SingleTickerProv
   // =========================================================================
   // ABA DO ESTOQUE GERAL (PLANILHA)
   // =========================================================================
-  Widget _buildValidadeEstoqueTab(Sku sku) {
+  Widget _buildValidadeEstoqueTab(Sku sku, String unidadeText) {
     return SingleChildScrollView(
       padding: const EdgeInsets.only(left: AppSpacing.md, right: AppSpacing.md, top: AppSpacing.md, bottom: 100.0),
       child: Column(
@@ -262,11 +253,11 @@ class _SkuDetailScreenState extends State<SkuDetailScreen> with SingleTickerProv
                 children: [
                   Text('Composição do Estoque', style: GoogleFonts.poppins(color: AppColors.textPrimary, fontSize: AppFontSizes.subtitle, fontWeight: FontWeight.w600)),
                   const Padding(padding: EdgeInsets.symmetric(vertical: AppSpacing.sm), child: Divider()),
-                  _buildEstoqueRow('Estoque Físico Total (020502)', sku.qtdTotal020502.toString(), AppColors.info),
+                  _buildEstoqueRow('Estoque Físico Total (020502)', '${sku.formatarQuantidade(sku.qtdTotal020502)} $unidadeText', AppColors.info),
                   const SizedBox(height: AppSpacing.sm),
-                  _buildEstoqueRow('Retido em Pedidos (020304)', '- ${sku.qtdBuffer020304}', AppColors.error),
+                  _buildEstoqueRow('Retido em Pedidos (020304)', '- ${sku.formatarQuantidade(sku.qtdBuffer020304)} $unidadeText', AppColors.error),
                   const Padding(padding: EdgeInsets.symmetric(vertical: AppSpacing.sm), child: Divider()),
-                  _buildEstoqueRow('Disponível para Venda', sku.qtdDisponivelVenda.toString(), AppColors.success, isBold: true),
+                  _buildEstoqueRow('Disponível para Venda', '${sku.formatarQuantidade(sku.qtdDisponivelVenda)} $unidadeText', AppColors.success, isBold: true),
                 ],
               ),
             ),
@@ -314,7 +305,7 @@ class _SkuDetailScreenState extends State<SkuDetailScreen> with SingleTickerProv
                 children: [
                   Text('Volume Crítico', style: GoogleFonts.poppins(color: AppColors.textPrimary, fontSize: AppFontSizes.subtitle, fontWeight: FontWeight.w600)),
                   const Padding(padding: EdgeInsets.symmetric(vertical: AppSpacing.sm), child: Divider()),
-                  _buildEstoqueRow('Total retido nesta validade', '${sku.qtdDisponivelVenda} $unidadeText', sku.statusColor, isBold: true),
+                  _buildEstoqueRow('Total retido nesta validade', '${sku.formatarQuantidade(sku.qtdDisponivelVenda)} $unidadeText', sku.statusColor, isBold: true),
                 ],
               ),
             ),

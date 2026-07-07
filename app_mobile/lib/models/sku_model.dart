@@ -146,12 +146,6 @@ class Sku {
   bool get semEstoque => statusTexto.toLowerCase().contains('sem estoque');
 
   /// Retorna uma string amigável com o range de validade.
-  ///
-  /// Exemplos de retorno:
-  /// - `'12/2026 até 04/2027'`   (range com duas datas distintas)
-  /// - `'Vence em 12/2026'`      (início == fim, mês único)
-  /// - `'Vence em 12/2026'`      (somente inicio preenchido)
-  /// - `'—'`                     (sem validade registrada)
   String getRangeValidadeFormatado() {
     if (validadeInicioRange == null) return '—';
 
@@ -167,23 +161,22 @@ class Sku {
     return '$inicio até $fim';
   }
 
+  /// Retorna apenas o número puro formatado com pontuação.
+  /// A unidade de medida agora é adicionada pelas telas.
   String formatarQuantidade(int quantidadeRaw) {
     String sigla = (unidadeMedida ?? 'UN').toUpperCase();
 
     // REGRA 1: Produtos vendidos naturalmente em unidades (ex: garrafas soltas)
     if (fatorConversao == null || fatorConversao! <= 1 || sigla == 'UN') {
-      String totalStr = quantidadeRaw.toString().replaceAllMapped(
+      return quantidadeRaw.toString().replaceAllMapped(
           RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.');
-      return '$totalStr UN';
     }
     
     // REGRA 2: Produtos em Caixa, Dúzia, Fardo, etc. (Ignora as unidades quebradas)
     int caixas = quantidadeRaw ~/ fatorConversao!; 
 
     // Coloca ponto nos milhares (ex: 2445 -> 2.445)
-    String caixasStr = caixas.toString().replaceAllMapped(
+    return caixas.toString().replaceAllMapped(
         RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.');
-    
-    return '$caixasStr $sigla';
   }
 }
