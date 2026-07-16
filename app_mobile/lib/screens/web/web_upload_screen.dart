@@ -11,10 +11,9 @@ import '../../services/upload_service.dart' hide UnidadeNegocio;
 import '../../services/sku_service.dart' hide AuthException;
 import '../login_screen.dart';
 
-/// Tela de Upload de Arquivos (Web) — Processamento FEFO Reverso.
+/// Tela de Upload de Arquivos (Web)
 ///
-/// Recebe 3 planilhas simultâneas (020502, 020304, NRI) e envia para
-/// o endpoint unificado POST /api/upload/grade-020502/.
+/// Suporta o Processamento FEFO Reverso (3 planilhas) e a Importação de Itens Críticos (1 planilha).
 class WebUploadScreen extends StatefulWidget {
   const WebUploadScreen({super.key});
 
@@ -28,17 +27,21 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
 
   // Estados globais
   bool _isLoadingUnidades = true;
-  bool _isUploading = false;
+  bool _isUploadingFefo = false;
+  bool _isUploadingCriticos = false; // Estado pro novo upload
   bool _isLoadingHistory = false;
 
   // Unidades
   List<UnidadeNegocio> _unidades = [];
   UnidadeNegocio? _selectedUnidade;
 
-  // Arquivos selecionados — null = ainda não selecionado
+  // Arquivos FEFO
   ArquivoUpload? _arquivo020502;
   ArquivoUpload? _arquivo020304;
   ArquivoUpload? _arquivoNri;
+
+  // Arquivo Críticos
+  ArquivoUpload? _arquivoCriticos;
 
   // Histórico
   List<HistoricoUpload> _uploadHistory = [];
@@ -113,7 +116,28 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
         children: [
           _buildUnidadeSelector(),
           const SizedBox(height: AppSpacing.xl),
-          _buildFefoUploadSection(),
+          // Painel duplo (lado a lado se tiver tela grande, ou um embaixo do outro)
+          LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth > 800) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _buildFefoUploadSection()),
+                    const SizedBox(width: AppSpacing.xl),
+                    Expanded(child: _buildCriticosUploadSection()),
+                  ],
+                );
+              }
+              return Column(
+                children: [
+                  _buildFefoUploadSection(),
+                  const SizedBox(height: AppSpacing.xl),
+                  _buildCriticosUploadSection(),
+                ],
+              );
+            },
+          ),
           const SizedBox(height: AppSpacing.xl),
           _buildInstructions(),
           const SizedBox(height: AppSpacing.xl),
@@ -124,7 +148,7 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
   }
 
   // -----------------------------------------------------------------------
-  // Seleção de unidade (sem alterações em relação ao original)
+  // Seleção de unidade
   // -----------------------------------------------------------------------
 
   Widget _buildUnidadeSelector() {
@@ -151,34 +175,12 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
                     color: AppColors.textPrimary,
                   ),
                 ),
-                const SizedBox(width: AppSpacing.sm),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.sm,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.error.withAlpha(26),
-                    borderRadius: BorderRadius.circular(AppRadius.sm),
-                  ),
-                  child: Text(
-                    'Obrigatório',
-                    style: GoogleFonts.poppins(
-                      fontSize: AppFontSizes.caption,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.error,
-                    ),
-                  ),
-                ),
               ],
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
               'Selecione a filial para qual os dados serão importados',
-              style: GoogleFonts.poppins(
-                fontSize: AppFontSizes.body,
-                color: AppColors.textSecondary,
-              ),
+              style: GoogleFonts.poppins(fontSize: AppFontSizes.body, color: AppColors.textSecondary),
             ),
             const SizedBox(height: AppSpacing.md),
             if (_isLoadingUnidades)
@@ -189,13 +191,8 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
                 decoration: InputDecoration(
                   hintText: 'Selecione uma unidade...',
                   prefixIcon: const Icon(Icons.store),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(AppRadius.md),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.md,
-                    vertical: AppSpacing.md,
-                  ),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.md),
                 ),
                 items: _unidades.map((u) {
                   return DropdownMenuItem<UnidadeNegocio>(
@@ -212,118 +209,67 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
   }
 
   // -----------------------------------------------------------------------
-  // Formulário FEFO com 3 seletores + botão de processar
+  // Formulário FEFO (3 planilhas)
   // -----------------------------------------------------------------------
 
   Widget _buildFefoUploadSection() {
-    final bool todosArquivosSelecionados =
-        _arquivo020502 != null &&
-        _arquivo020304 != null &&
-        _arquivoNri != null;
-
-    final bool podeProcesar =
-        _selectedUnidade != null &&
-        todosArquivosSelecionados &&
-        !_isUploading;
+    final bool todosArquivosSelecionados = _arquivo020502 != null && _arquivo020304 != null && _arquivoNri != null;
+    final bool podeProcesar = _selectedUnidade != null && todosArquivosSelecionados && !_isUploadingFefo && !_isUploadingCriticos;
 
     return Card(
       elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        side: BorderSide(color: AppColors.divider.withAlpha(128)),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg), side: BorderSide(color: AppColors.divider.withAlpha(128))),
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.lg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Cabeçalho
             Row(
               children: [
                 Container(
                   padding: const EdgeInsets.all(AppSpacing.sm),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withAlpha(26),
-                    borderRadius: BorderRadius.circular(AppRadius.sm),
-                  ),
-                  child: Icon(Icons.auto_awesome,
-                      color: AppColors.primary, size: 22),
+                  decoration: BoxDecoration(color: AppColors.primary.withAlpha(26), borderRadius: BorderRadius.circular(AppRadius.sm)),
+                  child: Icon(Icons.auto_awesome, color: AppColors.primary, size: 22),
                 ),
                 const SizedBox(width: AppSpacing.md),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Processamento FEFO',
-                      style: GoogleFonts.poppins(
-                        fontSize: AppFontSizes.subtitle,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    Text(
-                      'Selecione as 3 planilhas para calcular o estoque gerencial',
-                      style: GoogleFonts.poppins(
-                        fontSize: AppFontSizes.caption,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Processamento FEFO', style: GoogleFonts.poppins(fontSize: AppFontSizes.subtitle, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                      Text('Selecione as 3 planilhas para atualizar o Estoque Geral', style: GoogleFonts.poppins(fontSize: AppFontSizes.caption, color: AppColors.textSecondary)),
+                    ],
+                  ),
                 ),
               ],
             ),
-
             const SizedBox(height: AppSpacing.xl),
-
-            // Linha de progresso — indica quantos arquivos foram selecionados
-            _buildProgressIndicator(),
-
+            _buildProgressIndicator(3, [_arquivo020502, _arquivo020304, _arquivoNri].where((a) => a != null).length),
             const SizedBox(height: AppSpacing.xl),
-
-            // 3 seletores de arquivo
             _buildFilePicker(
-              label: 'Grade 020502',
-              sublabel: 'Estoque Total Diário',
-              icon: Icons.inventory_2_outlined,
-              color: AppColors.primary,
-              arquivo: _arquivo020502,
-              onSelect: () => _selectFile('020502'),
-              onClear: () => setState(() => _arquivo020502 = null),
+              label: 'Grade 020502', sublabel: 'Estoque Total Diário', icon: Icons.inventory_2_outlined, color: AppColors.primary,
+              arquivo: _arquivo020502, onSelect: () => _selectFile('020502'), onClear: () => setState(() => _arquivo020502 = null),
             ),
-
             const SizedBox(height: AppSpacing.md),
-
             _buildFilePicker(
-              label: 'Grade 020304',
-              sublabel: 'Buffer de Segurança',
-              icon: Icons.safety_check_outlined,
-              color: AppColors.info,
-              arquivo: _arquivo020304,
-              onSelect: () => _selectFile('020304'),
-              onClear: () => setState(() => _arquivo020304 = null),
+              label: 'Grade 020304', sublabel: 'Buffer de Segurança', icon: Icons.safety_check_outlined, color: AppColors.info,
+              arquivo: _arquivo020304, onSelect: () => _selectFile('020304'), onClear: () => setState(() => _arquivo020304 = null),
             ),
-
             const SizedBox(height: AppSpacing.md),
-
             _buildFilePicker(
-              label: 'Planilha NRI',
-              sublabel: 'Não-Regular de Inventário',
-              icon: Icons.description_outlined,
-              color: AppColors.warning,
-              arquivo: _arquivoNri,
-              onSelect: () => _selectFile('nri'),
-              onClear: () => setState(() => _arquivoNri = null),
+              label: 'Planilha NRI', sublabel: 'Não-Regular de Inventário', icon: Icons.description_outlined, color: AppColors.warning,
+              arquivo: _arquivoNri, onSelect: () => _selectFile('nri'), onClear: () => setState(() => _arquivoNri = null),
             ),
-
             const SizedBox(height: AppSpacing.xl),
-
-            // Estado de carregamento OU botão principal
-            if (_isUploading)
-              _buildUploadProgress()
+            if (_isUploadingFefo)
+              _buildUploadProgress('Processando estoque FEFO...')
             else
               _buildProcessarButton(
+                label: 'Processar Estoque FEFO',
+                icon: Icons.bolt,
                 enabled: podeProcesar,
-                allSelected: todosArquivosSelecionados,
+                hint: _selectedUnidade == null ? 'Selecione a unidade primeiro.' : (!todosArquivosSelecionados ? 'Selecione as 3 planilhas.' : ''),
+                onPressed: _performUploadFefo,
               ),
           ],
         ),
@@ -331,24 +277,104 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
     );
   }
 
-  /// Barra de progresso visual (0/3, 1/3, 2/3, 3/3 arquivos).
-  Widget _buildProgressIndicator() {
-    final count = [_arquivo020502, _arquivo020304, _arquivoNri]
-        .where((a) => a != null)
-        .length;
+  // -----------------------------------------------------------------------
+  // NOVO: Formulário CRÍTICOS (1 planilha)
+  // -----------------------------------------------------------------------
 
+  Widget _buildCriticosUploadSection() {
+    final bool selecionado = _arquivoCriticos != null;
+    final bool podeProcesar = _selectedUnidade != null && selecionado && !_isUploadingFefo && !_isUploadingCriticos;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg), side: BorderSide(color: AppColors.divider.withAlpha(128))),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(AppSpacing.sm),
+                  decoration: BoxDecoration(color: AppColors.error.withAlpha(26), borderRadius: BorderRadius.circular(AppRadius.sm)),
+                  child: Icon(Icons.crisis_alert, color: AppColors.error, size: 22),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Importação de Itens Críticos', style: GoogleFonts.poppins(fontSize: AppFontSizes.subtitle, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                      Text('Envie a planilha de apontamento manual', style: GoogleFonts.poppins(fontSize: AppFontSizes.caption, color: AppColors.textSecondary)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            _buildProgressIndicator(1, selecionado ? 1 : 0),
+            const SizedBox(height: AppSpacing.xl),
+            _buildFilePicker(
+              label: 'Planilha de Críticos', sublabel: 'Formato: Cod, Qtd, Vencto...', icon: Icons.table_view_outlined, color: AppColors.error,
+              arquivo: _arquivoCriticos, onSelect: () => _selectFile('criticos'), onClear: () => setState(() => _arquivoCriticos = null),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            
+            // Área de aviso de Ground Zero
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(AppRadius.sm), border: Border.all(color: AppColors.error.withAlpha(50))),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info, color: AppColors.error, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Esta importação sobrescreve todos os lançamentos críticos anteriores da filial (Fotografia).',
+                      style: GoogleFonts.poppins(fontSize: AppFontSizes.caption, color: AppColors.textSecondary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            const Spacer(),
+            const SizedBox(height: AppSpacing.xl),
+
+            if (_isUploadingCriticos)
+              _buildUploadProgress('Processando itens críticos...')
+            else
+              _buildProcessarButton(
+                label: 'Importar Críticos',
+                icon: Icons.upload,
+                color: AppColors.error,
+                enabled: podeProcesar,
+                hint: _selectedUnidade == null ? 'Selecione a unidade primeiro.' : (!selecionado ? 'Selecione a planilha.' : ''),
+                onPressed: _performUploadCriticos,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // -----------------------------------------------------------------------
+  // Componentes Auxiliares Compartilhados
+  // -----------------------------------------------------------------------
+
+  Widget _buildProgressIndicator(int total, int preenchidos) {
     return Row(
-      children: List.generate(3, (i) {
-        final filled = i < count;
+      children: List.generate(total, (i) {
+        final filled = i < preenchidos;
         return Expanded(
           child: Container(
-            margin: EdgeInsets.only(right: i < 2 ? AppSpacing.xs : 0),
+            margin: EdgeInsets.only(right: i < (total - 1) ? AppSpacing.xs : 0),
             height: 4,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(2),
-              color: filled
-                  ? AppColors.primary
-                  : AppColors.divider.withAlpha(128),
+              color: filled ? AppColors.primary : AppColors.divider.withAlpha(128),
             ),
           ),
         );
@@ -356,91 +382,42 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
     );
   }
 
-  /// Linha individual de seleção de arquivo.
   Widget _buildFilePicker({
-    required String label,
-    required String sublabel,
-    required IconData icon,
-    required Color color,
-    required ArquivoUpload? arquivo,
-    required VoidCallback onSelect,
-    required VoidCallback onClear,
+    required String label, required String sublabel, required IconData icon, required Color color,
+    required ArquivoUpload? arquivo, required VoidCallback onSelect, required VoidCallback onClear,
   }) {
     final bool selecionado = arquivo != null;
-
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.md,
-        vertical: AppSpacing.md,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.md),
       decoration: BoxDecoration(
         color: selecionado ? color.withAlpha(13) : AppColors.background,
         borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(
-          color: selecionado ? color.withAlpha(128) : AppColors.divider,
-          width: selecionado ? 1.5 : 1,
-        ),
+        border: Border.all(color: selecionado ? color.withAlpha(128) : AppColors.divider, width: selecionado ? 1.5 : 1),
       ),
       child: Row(
         children: [
-          // Ícone do tipo de arquivo
           Container(
             padding: const EdgeInsets.all(AppSpacing.sm),
-            decoration: BoxDecoration(
-              color: color.withAlpha(26),
-              borderRadius: BorderRadius.circular(AppRadius.sm),
-            ),
-            child: Icon(
-              selecionado ? Icons.check_circle : icon,
-              color: color,
-              size: 22,
-            ),
+            decoration: BoxDecoration(color: color.withAlpha(26), borderRadius: BorderRadius.circular(AppRadius.sm)),
+            child: Icon(selecionado ? Icons.check_circle : icon, color: color, size: 22),
           ),
-
           const SizedBox(width: AppSpacing.md),
-
-          // Nome e status
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  label,
-                  style: GoogleFonts.poppins(
-                    fontSize: AppFontSizes.body,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                Text(
-                  selecionado ? arquivo.nome : sublabel,
-                  style: GoogleFonts.poppins(
-                    fontSize: AppFontSizes.caption,
-                    color: selecionado ? color : AppColors.textSecondary,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                Text(label, style: GoogleFonts.poppins(fontSize: AppFontSizes.body, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                Text(selecionado ? arquivo.nome : sublabel, style: GoogleFonts.poppins(fontSize: AppFontSizes.caption, color: selecionado ? color : AppColors.textSecondary), maxLines: 1, overflow: TextOverflow.ellipsis),
               ],
             ),
           ),
-
           const SizedBox(width: AppSpacing.sm),
-
-          // Botão de ação: limpar se selecionado, selecionar se não
           if (selecionado)
-            IconButton(
-              icon: const Icon(Icons.close, size: 18),
-              onPressed: _isUploading ? null : onClear,
-              color: AppColors.textSecondary,
-              tooltip: 'Remover arquivo',
-            )
+            IconButton(icon: const Icon(Icons.close, size: 18), onPressed: (_isUploadingFefo || _isUploadingCriticos) ? null : onClear, color: AppColors.textSecondary)
           else
             TextButton.icon(
-              onPressed: _selectedUnidade == null || _isUploading
-                  ? null
-                  : onSelect,
+              onPressed: _selectedUnidade == null || _isUploadingFefo || _isUploadingCriticos ? null : onSelect,
               icon: const Icon(Icons.upload_file, size: 16),
               label: const Text('Selecionar'),
               style: TextButton.styleFrom(foregroundColor: color),
@@ -450,105 +427,39 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
     );
   }
 
-  /// Botão principal de processamento.
-  Widget _buildProcessarButton({
-    required bool enabled,
-    required bool allSelected,
-  }) {
-    // Mensagem de contexto abaixo do botão
-    String hint = '';
-    if (_selectedUnidade == null) {
-      hint = 'Selecione a unidade de negócio antes de continuar.';
-    } else if (!allSelected) {
-      final faltando = [
-        if (_arquivo020502 == null) '020502',
-        if (_arquivo020304 == null) '020304',
-        if (_arquivoNri == null) 'NRI',
-      ].join(', ');
-      hint = 'Ainda faltam: $faltando';
-    }
-
+  Widget _buildProcessarButton({required String label, required IconData icon, required bool enabled, required String hint, required VoidCallback onPressed, Color color = AppColors.primary}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         ElevatedButton.icon(
-          onPressed: enabled ? _performUpload : null,
-          icon: const Icon(Icons.bolt, size: 20),
-          label: const Text(
-            'Processar Estoque FEFO',
-            style: TextStyle(fontWeight: FontWeight.w600),
-          ),
+          onPressed: enabled ? onPressed : null,
+          icon: Icon(icon, size: 20),
+          label: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
           style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.primary,
+            backgroundColor: color,
             foregroundColor: Colors.white,
             disabledBackgroundColor: AppColors.divider,
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppRadius.md),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
           ),
         ),
         if (hint.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.sm),
-          Text(
-            hint,
-            style: GoogleFonts.poppins(
-              fontSize: AppFontSizes.caption,
-              color: AppColors.warning,
-            ),
-            textAlign: TextAlign.center,
-          ),
+          Text(hint, style: GoogleFonts.poppins(fontSize: AppFontSizes.caption, color: AppColors.warning), textAlign: TextAlign.center),
         ],
       ],
     );
   }
 
-  /// Widget de progresso exibido durante o envio.
-  Widget _buildUploadProgress() {
-    final nomes = [
-      _arquivo020502?.nome ?? '',
-      _arquivo020304?.nome ?? '',
-      _arquivoNri?.nome ?? '',
-    ].where((n) => n.isNotEmpty).join(' • ');
-
+  Widget _buildUploadProgress(String texto) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.divider),
-      ),
+      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(AppRadius.md), border: Border.all(color: AppColors.divider)),
       child: Row(
         children: [
-          const SizedBox(
-            width: 40,
-            height: 40,
-            child: CircularProgressIndicator(strokeWidth: 3),
-          ),
+          const SizedBox(width: 30, height: 30, child: CircularProgressIndicator(strokeWidth: 3)),
           const SizedBox(width: AppSpacing.lg),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Processando estoque FEFO...',
-                  style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                Text(
-                  nomes,
-                  style: GoogleFonts.poppins(
-                    fontSize: AppFontSizes.caption,
-                    color: AppColors.textSecondary,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
+          Expanded(child: Text(texto, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: AppColors.textPrimary))),
         ],
       ),
     );
@@ -561,10 +472,7 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
   Widget _buildInstructions() {
     return Card(
       elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        side: BorderSide(color: AppColors.divider.withAlpha(128)),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg), side: BorderSide(color: AppColors.divider.withAlpha(128))),
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.lg),
         child: Column(
@@ -574,50 +482,21 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
               children: [
                 Icon(Icons.info_outline, color: AppColors.info),
                 const SizedBox(width: AppSpacing.sm),
-                Text(
-                  'Instruções de Upload',
-                  style: GoogleFonts.poppins(
-                    fontSize: AppFontSizes.subtitle,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
+                Text('Instruções de Upload', style: GoogleFonts.poppins(fontSize: AppFontSizes.subtitle, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
               ],
             ),
             const SizedBox(height: AppSpacing.md),
-            _buildInstructionStep(
-              '1.',
-              'Selecione a Unidade de Negócio (filial) para onde os dados serão importados.',
-            ),
-            _buildInstructionStep(
-              '2.',
-              'Selecione as 3 planilhas obrigatórias: Grade 020502, Grade 020304 e NRI.',
-            ),
-            _buildInstructionStep(
-              '3.',
-              'Clique em "Processar Estoque FEFO". As 3 planilhas são enviadas juntas '
-              'para cálculo do estoque gerencial.',
-            ),
+            _buildInstructionStep('Estoque FEFO:', 'Requer 3 planilhas (020502, 020304, NRI). Serve para atualizar a visão macro dos vendedores.'),
+            _buildInstructionStep('Itens Críticos:', 'Requer 1 planilha contendo as colunas exatas: "Cod produto", "Qtd", "Data Vencto", "Data Recebimento". Sobrescreve alertas anteriores da filial.'),
             const SizedBox(height: AppSpacing.lg),
             Container(
               padding: const EdgeInsets.all(AppSpacing.md),
-              decoration: BoxDecoration(
-                color: AppColors.warning.withAlpha(26),
-                borderRadius: BorderRadius.circular(AppRadius.md),
-              ),
+              decoration: BoxDecoration(color: AppColors.warning.withAlpha(26), borderRadius: BorderRadius.circular(AppRadius.md)),
               child: Row(
                 children: [
                   Icon(Icons.warning_amber, color: AppColors.warning),
                   const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Text(
-                      'Formatos aceitos: .xlsx, .xls, .csv (máximo 10MB por arquivo)',
-                      style: GoogleFonts.poppins(
-                        fontSize: AppFontSizes.body,
-                        color: AppColors.warning,
-                      ),
-                    ),
-                  ),
+                  Expanded(child: Text('Formatos aceitos: .xlsx, .xls, .csv (máximo 10MB por arquivo)', style: GoogleFonts.poppins(fontSize: AppFontSizes.body, color: AppColors.warning))),
                 ],
               ),
             ),
@@ -627,46 +506,28 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
     );
   }
 
-  Widget _buildInstructionStep(String step, String text) {
+  Widget _buildInstructionStep(String title, String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            step,
-            style: GoogleFonts.poppins(
-              fontSize: AppFontSizes.body,
-              fontWeight: FontWeight.w700,
-              color: AppColors.primary,
-            ),
-          ),
+          Text(title, style: GoogleFonts.poppins(fontSize: AppFontSizes.body, fontWeight: FontWeight.w700, color: AppColors.primary)),
           const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Text(
-              text,
-              style: GoogleFonts.poppins(
-                fontSize: AppFontSizes.body,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ),
+          Expanded(child: Text(text, style: GoogleFonts.poppins(fontSize: AppFontSizes.body, color: AppColors.textSecondary))),
         ],
       ),
     );
   }
 
   // -----------------------------------------------------------------------
-  // Histórico (mantido igual ao original)
+  // Histórico
   // -----------------------------------------------------------------------
 
   Widget _buildUploadHistory() {
     return Card(
       elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        side: BorderSide(color: AppColors.divider.withAlpha(128)),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg), side: BorderSide(color: AppColors.divider.withAlpha(128))),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -675,23 +536,10 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Histórico de Uploads',
-                  style: GoogleFonts.poppins(
-                    fontSize: AppFontSizes.subtitle,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
+                Text('Histórico de Uploads', style: GoogleFonts.poppins(fontSize: AppFontSizes.subtitle, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
                 IconButton(
                   onPressed: _loadUploadHistory,
-                  icon: _isLoadingHistory
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.refresh, size: 18),
+                  icon: _isLoadingHistory ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.refresh, size: 18),
                   tooltip: 'Atualizar histórico',
                 ),
               ],
@@ -699,28 +547,16 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
           ),
           const Divider(height: 1),
           if (_isLoadingHistory && _uploadHistory.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(AppSpacing.xl),
-              child: Center(child: CircularProgressIndicator()),
-            )
+            const Padding(padding: EdgeInsets.all(AppSpacing.xl), child: Center(child: CircularProgressIndicator()))
           else if (_uploadHistory.isEmpty)
             Padding(
               padding: const EdgeInsets.all(AppSpacing.xl),
               child: Center(
                 child: Column(
                   children: [
-                    Icon(
-                      Icons.history,
-                      size: 48,
-                      color: AppColors.textSecondary.withAlpha(128),
-                    ),
+                    Icon(Icons.history, size: 48, color: AppColors.textSecondary.withAlpha(128)),
                     const SizedBox(height: AppSpacing.md),
-                    Text(
-                      'Nenhum upload realizado',
-                      style: GoogleFonts.poppins(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
+                    Text('Nenhum upload realizado', style: GoogleFonts.poppins(color: AppColors.textSecondary)),
                   ],
                 ),
               ),
@@ -731,8 +567,7 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
               physics: const NeverScrollableScrollPhysics(),
               itemCount: _uploadHistory.length,
               separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (context, index) =>
-                  _buildHistoryItem(_uploadHistory[index]),
+              itemBuilder: (context, index) => _buildHistoryItem(_uploadHistory[index]),
             ),
         ],
       ),
@@ -745,98 +580,46 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
     final timestamp = _formatTimestamp(item.createdAt);
 
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.lg,
-        vertical: AppSpacing.sm,
-      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
       leading: Container(
         padding: const EdgeInsets.all(AppSpacing.sm),
-        decoration: BoxDecoration(
-          color: statusColor.withAlpha(26),
-          borderRadius: BorderRadius.circular(AppRadius.sm),
-        ),
+        decoration: BoxDecoration(color: statusColor.withAlpha(26), borderRadius: BorderRadius.circular(AppRadius.sm)),
         child: Icon(statusIcon, color: statusColor, size: 24),
       ),
-      title: Text(
-        item.nomeArquivo,
-        style: GoogleFonts.poppins(
-          fontWeight: FontWeight.w600,
-          color: AppColors.textPrimary,
-        ),
-      ),
+      title: Text(item.nomeArquivo, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '${item.tipoArquivoDisplay} • ${item.unidadeNome} • $timestamp',
-            style: GoogleFonts.poppins(
-              fontSize: AppFontSizes.caption,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          Text(
-            'Por ${item.usuarioNome}',
-            style: GoogleFonts.poppins(
-              fontSize: AppFontSizes.caption,
-              color: AppColors.textSecondary,
-            ),
-          ),
+          Text('${item.tipoArquivoDisplay} • ${item.unidadeNome} • $timestamp', style: GoogleFonts.poppins(fontSize: AppFontSizes.caption, color: AppColors.textSecondary)),
+          Text('Por ${item.usuarioNome}', style: GoogleFonts.poppins(fontSize: AppFontSizes.caption, color: AppColors.textSecondary)),
           if (item.mensagemErro != null && item.mensagemErro!.isNotEmpty)
-            Text(
-              item.mensagemErro!,
-              style: GoogleFonts.poppins(
-                fontSize: AppFontSizes.caption,
-                color: statusColor,
-              ),
-            ),
+            Text(item.mensagemErro!, style: GoogleFonts.poppins(fontSize: AppFontSizes.caption, color: statusColor)),
         ],
       ),
       trailing: item.linhasProcessadas > 0
           ? Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.sm,
-                vertical: AppSpacing.xs,
-              ),
-              decoration: BoxDecoration(
-                color: AppColors.background,
-                borderRadius: BorderRadius.circular(AppRadius.sm),
-              ),
-              child: Text(
-                '${item.linhasProcessadas} SKUs',
-                style: GoogleFonts.poppins(
-                  fontSize: AppFontSizes.caption,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textSecondary,
-                ),
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+              decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(AppRadius.sm)),
+              child: Text('${item.linhasProcessadas} SKUs', style: GoogleFonts.poppins(fontSize: AppFontSizes.caption, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
             )
           : null,
     );
   }
 
   // -----------------------------------------------------------------------
-  // Métodos auxiliares
+  // Métodos de Arquivo e API
   // -----------------------------------------------------------------------
 
-  /// Abre o FilePicker para um dos 3 tipos de arquivo.
-  /// [tipo] pode ser '020502', '020304' ou 'nri'.
   Future<void> _selectFile(String tipo) async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['xlsx', 'xls', 'csv'],
-        withData: true,
-      );
-
+      final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['xlsx', 'xls', 'csv'], withData: true);
       if (result == null || result.files.isEmpty) return;
 
       final file = result.files.first;
-
       if (file.size > 10 * 1024 * 1024) {
         _showError('Arquivo muito grande. Máximo permitido: 10MB');
         return;
       }
-
       if (file.bytes == null) {
         _showError('Não foi possível ler o arquivo. Tente novamente.');
         return;
@@ -845,111 +628,115 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
       final arquivo = ArquivoUpload(nome: file.name, bytes: file.bytes!);
 
       setState(() {
-        switch (tipo) {
-          case '020502':
-            _arquivo020502 = arquivo;
-            break;
-          case '020304':
-            _arquivo020304 = arquivo;
-            break;
-          case 'nri':
-            _arquivoNri = arquivo;
-            break;
-        }
+        if (tipo == '020502') _arquivo020502 = arquivo;
+        else if (tipo == '020304') _arquivo020304 = arquivo;
+        else if (tipo == 'nri') _arquivoNri = arquivo;
+        else if (tipo == 'criticos') _arquivoCriticos = arquivo;
       });
     } catch (e) {
       _showError('Erro ao selecionar arquivo: $e');
     }
   }
 
-  /// Limpa todos os arquivos selecionados.
-  void _clearAllFiles() {
-    setState(() {
-      _arquivo020502 = null;
-      _arquivo020304 = null;
-      _arquivoNri = null;
-    });
-  }
-
-  /// Envia os 3 arquivos para a API.
-  Future<void> _performUpload() async {
-    if (_selectedUnidade == null ||
-        _arquivo020502 == null ||
-        _arquivo020304 == null ||
-        _arquivoNri == null) return;
-
-    setState(() => _isUploading = true);
+  Future<void> _performUploadFefo() async {
+    if (_selectedUnidade == null || _arquivo020502 == null || _arquivo020304 == null || _arquivoNri == null) return;
+    setState(() => _isUploadingFefo = true);
 
     try {
-      final result = await _uploadService.uploadEstoqueFefo(
-        arquivo020502: _arquivo020502!,
-        arquivo020304: _arquivo020304!,
-        arquivoNri: _arquivoNri!,
-        unidadeNegocioId: _selectedUnidade!.id,
-      );
-
+      final result = await _uploadService.uploadEstoqueFefo(arquivo020502: _arquivo020502!, arquivo020304: _arquivo020304!, arquivoNri: _arquivoNri!, unidadeNegocioId: _selectedUnidade!.id);
       setState(() {
-        _isUploading = false;
-        if (result.success) _clearAllFiles();
+        _isUploadingFefo = false;
+        if (result.success) { _arquivo020502 = null; _arquivo020304 = null; _arquivoNri = null; }
       });
 
       if (result.success) {
-        _showSuccess(
-          'Estoque FEFO processado com sucesso! '
-          '${result.skusAtualizados} SKUs atualizados.',
-        );
+        _showSuccess('Estoque FEFO processado com sucesso! ${result.skusAtualizados} SKUs atualizados.');
       } else {
         _showError(result.errorMessage ?? 'Erro ao processar arquivos.');
       }
-
-      if (result.warnings.isNotEmpty) {
-        _showWarning('Avisos: ${result.warnings.join(", ")}');
-      }
-
+      if (result.warnings.isNotEmpty) _showWarning('Avisos: ${result.warnings.join(", ")}');
       _loadUploadHistory();
     } on AuthException catch (e) {
-      setState(() => _isUploading = false);
+      setState(() => _isUploadingFefo = false);
       _handleAuthError(e.message);
     } catch (e) {
-      setState(() => _isUploading = false);
+      setState(() => _isUploadingFefo = false);
       _showError('Erro ao enviar arquivos: $e');
+    }
+  }
+
+  Future<void> _performUploadCriticos() async {
+    if (_selectedUnidade == null || _arquivoCriticos == null) return;
+    setState(() => _isUploadingCriticos = true);
+
+    try {
+      final result = await _uploadService.uploadPlanilhaCriticos(arquivo: _arquivoCriticos!, unidadeNegocioId: _selectedUnidade!.id);
+      
+      setState(() {
+        _isUploadingCriticos = false;
+        if (result.success) _arquivoCriticos = null; // Limpa ao finalizar
+      });
+
+      if (result.success) {
+        // Exibimos um diálogo de Sucesso pois limpar a tela apenas com SnackBar pode não ser visualmente satisfatório para planilhas de críticos
+        _showSuccess('Importação concluída! ${result.skusAtualizados} itens críticos atualizados.');
+      } else {
+        // Se a importação falhar por dados incorretos, mostrará o erro na tela (incluindo as linhas com defeito)
+        _showErrorDialog('Falha na Importação', result.errorMessage ?? 'Verifique a formatação da sua planilha.');
+      }
+      _loadUploadHistory();
+    } on AuthException catch (e) {
+      setState(() => _isUploadingCriticos = false);
+      _handleAuthError(e.message);
+    } catch (e) {
+      setState(() => _isUploadingCriticos = false);
+      _showError('Erro ao enviar a planilha: $e');
     }
   }
 
   String _formatTimestamp(DateTime dt) {
     final local = dt.toLocal();
-    return '${local.day.toString().padLeft(2, '0')}/'
-        '${local.month.toString().padLeft(2, '0')}/'
-        '${local.year} '
-        '${local.hour.toString().padLeft(2, '0')}:'
-        '${local.minute.toString().padLeft(2, '0')}';
+    return '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')}/${local.year} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
   }
 
   void _showSuccess(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: AppColors.success),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: AppColors.success, duration: const Duration(seconds: 4)));
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: AppColors.error),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: AppColors.error, duration: const Duration(seconds: 5)));
   }
 
   void _showWarning(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: AppColors.warning),
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: AppColors.warning));
+  }
+
+  void _showErrorDialog(String title, String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.error_outline, color: AppColors.error),
+            const SizedBox(width: 8),
+            Text(title, style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 18)),
+          ],
+        ),
+        content: SingleChildScrollView(child: Text(message, style: GoogleFonts.poppins(fontSize: 14))),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Entendi, vou corrigir', style: TextStyle(color: Colors.white)),
+          )
+        ],
+      )
     );
   }
 
   void _handleAuthError(String message) {
     _showError(message);
-    final authService = Provider.of<AuthService>(context, listen: false);
-    authService.logout();
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
-    );
+    Provider.of<AuthService>(context, listen: false).logout();
+    Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
   }
 }
