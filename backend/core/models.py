@@ -322,6 +322,26 @@ class LancamentoCriticoManual(BaseModel):
         related_name='meus_lancamentos_criticos',
         verbose_name='Lançado por'
     )
+    # === NOVOS CAMPOS PARA AUDITORIA DE RESOLUÇÃO (SOFT DELETE) ===
+    motivo_resolucao = models.CharField(
+        max_length=100, 
+        null=True, 
+        blank=True, 
+        verbose_name='Motivo da Baixa'
+    )
+    data_resolucao = models.DateTimeField(
+        null=True, 
+        blank=True, 
+        verbose_name='Data de Resolução'
+    )
+    usuario_resolucao = models.ForeignKey(
+        'Usuario', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='resolucoes_criticas',
+        verbose_name='Resolvido por'
+    )
 
     class Meta:
         verbose_name = 'Lançamento Crítico Manual'

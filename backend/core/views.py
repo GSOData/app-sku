@@ -8,6 +8,7 @@ Implementa:
 - Controle de acesso por unidade
 """
 
+from django.utils import timezone
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -431,19 +432,53 @@ class SKUViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
 # =============================================================================
 # LANÇAMENTOS MANUAIS (CONTROLE)
 # =============================================================================
-class LancamentoCriticoManualViewSet(UnidadeAccessMixin, viewsets.ModelViewSet):
+class LancamentoCriticoManualViewSet(viewsets.ModelViewSet):
     """
-    ViewSet para a equipe de Controle lançar manualmente itens críticos.
+    CRUD para a equipe de Controle lançar e gerenciar lotes críticos manualmente.
     """
     serializer_class = LancamentoCriticoManualSerializer
     permission_classes = [IsAuthenticated, IsControle]
 
     def get_queryset(self):
-        queryset = LancamentoCriticoManual.objects.filter(ativo=True)
-        return self.filter_by_unidade_ativa(queryset).select_related('sku')
+        unidade_id = self.request.query_params.get('unidade_id')
+        if unidade_id:
+            return LancamentoCriticoManual.objects.filter(ativo=True, unidade_negocio_id=unidade_id)
+        return LancamentoCriticoManual.objects.filter(ativo=True)
 
     def perform_create(self, serializer):
         serializer.save(usuario_lancamento=self.request.user)
+
+    # 1. BLOQUEAMOS O DELETE REAL (Ninguém apaga o histórico do banco)
+    def destroy(self, request, *args, **kwargs):
+        return Response(
+            {'detail': 'A exclusão direta foi desativada por motivos de auditoria. Use a ação de resolução.'}, 
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    # 2. CRIAMOS A ROTA CUSTOMIZADA DE RESOLUÇÃO (Soft Delete)
+    @action(detail=True, methods=['post'])
+    def resolver(self, request, pk=None):
+        lancamento = self.get_object()
+        motivo = request.data.get('motivo')
+        
+        if not motivo:
+            return Response({'error': 'O motivo da baixa é obrigatório.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        # Oculta do sistema e grava a auditoria
+        lancamento.ativo = False 
+        lancamento.motivo_resolucao = motivo
+        lancamento.data_resolucao = timezone.now()
+        lancamento.usuario_resolucao = request.user
+        lancamento.save()
+        
+        log_consulta(
+            usuario=request.user, 
+            tipo='RESOLUCAO_CRITICO', 
+            parametros={'lancamento_id': pk, 'motivo': motivo}, 
+            request=request
+        )
+        
+        return Response({'status': 'Resolvido e arquivado com sucesso.'})
 
 
 # =============================================================================

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -34,57 +35,93 @@ class _CriticalItemsScreenState extends State<CriticalItemsScreen> {
     _localSkus = List.from(widget.skus);
   }
 
-  Future<bool> _confirmarDelecao(BuildContext context, Sku sku) async {
-    final authService = Provider.of<AuthService>(context, listen: false);
-    if (authService.usuario?.isVendedor == true) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Apenas a equipe de Controle pode resolver alertas.'), backgroundColor: AppColors.error));
-      return false;
-    }
+  // --- NOVO: Pop-up Inteligente de Motivos ---
+  Future<String?> _obterMotivoResolucao(BuildContext context, Sku sku) async {
+    String? motivoSelecionado;
+    final motivos = [
+      'Venda / Saída Normal',
+      'Perda / Avaria (Descarte)',
+      'Recolhimento / Troca',
+      'Lançamento Indevido (Erro)'
+    ];
 
-    return await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text('Resolver Alerta?', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
-            content: Text('Confirmar que a irregularidade do produto "${sku.nomeProduto}" foi sanada e remover o alerta do painel?'),
-            actions: [
-              TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancelar', style: TextStyle(color: AppColors.textSecondary))),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.success),
-                child: const Text('Sim, Concluir', style: TextStyle(color: Colors.white)),
+    return await showDialog<String>(
+      context: context,
+      barrierDismissible: false, // Força a escolha
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
+              title: Text('Resolver Alerta', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Qual o motivo da baixa deste alerta para:\n"${sku.nomeProduto}"?', style: GoogleFonts.poppins(fontSize: 14)),
+                  const SizedBox(height: 16),
+                  ...motivos.map((m) => RadioListTile<String>(
+                    title: Text(m, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w500)),
+                    value: m,
+                    groupValue: motivoSelecionado,
+                    onChanged: (val) => setState(() => motivoSelecionado = val),
+                    contentPadding: EdgeInsets.zero,
+                    activeColor: AppColors.primary,
+                  )),
+                ],
               ),
-            ],
-          ),
-        ) ??
-        false;
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(null),
+                  child: const Text('Cancelar', style: TextStyle(color: AppColors.textSecondary)),
+                ),
+                ElevatedButton(
+                  onPressed: motivoSelecionado == null ? null : () => Navigator.of(context).pop(motivoSelecionado),
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.success),
+                  child: const Text('Confirmar Baixa', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          }
+        );
+      }
+    );
   }
 
-  Future<void> _removerAlertaApi(Sku sku, int index) async {
+  // --- NOVO: Chama o endpoint POST /resolver/ ---
+  Future<bool> _resolverAlertaApi(Sku sku, String motivo) async {
     try {
       final authService = Provider.of<AuthService>(context, listen: false);
       final lancamentoId = sku.id; 
 
-      final response = await http.delete(
-        Uri.parse('${Constants.apiUrl}lancamentos-criticos/$lancamentoId/'),
-        headers: {'Authorization': 'Bearer ${authService.accessToken}'},
+      final response = await http.post(
+        Uri.parse('${Constants.apiUrl}lancamentos-criticos/$lancamentoId/resolver/'),
+        headers: {
+          'Authorization': 'Bearer ${authService.accessToken}',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'motivo': motivo}),
       );
 
-      if (response.statusCode == 204) {
-        setState(() { _localSkus.removeAt(index); });
-        widget.onRefreshData(); 
+      if (response.statusCode == 200) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Alerta resolvido com sucesso!'), backgroundColor: AppColors.success));
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Alerta resolvido e registrado no histórico!'), backgroundColor: AppColors.success));
         }
-      } else {
-        throw Exception();
+        return true;
       }
+      return false;
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Falha ao comunicar exclusão com o servidor.'), backgroundColor: AppColors.error));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Falha ao comunicar com o servidor.'), backgroundColor: AppColors.error));
+      }
+      return false;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(title: Text(widget.title, style: GoogleFonts.poppins(fontWeight: FontWeight.w600)), backgroundColor: widget.themeColor, foregroundColor: Colors.white, elevation: 0),
@@ -102,8 +139,26 @@ class _CriticalItemsScreenState extends State<CriticalItemsScreen> {
                   return Dismissible(
                     key: Key(sku.id.toString()),
                     direction: DismissDirection.endToStart,
-                    confirmDismiss: (_) => _confirmarDelecao(context, sku),
-                    onDismissed: (_) => _removerAlertaApi(sku, index),
+                    // O Flutter pausa o arrasto até que o usuário responda o Pop-up
+                    confirmDismiss: (_) async {
+                      if (authService.usuario?.isVendedor == true) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Apenas a equipe de Controle pode resolver alertas.'), backgroundColor: AppColors.error));
+                        return false;
+                      }
+
+                      // 1. Abre Pop-up e pega o motivo
+                      final motivo = await _obterMotivoResolucao(context, sku);
+                      if (motivo != null) {
+                        // 2. Chama a API para salvar a auditoria
+                        final sucesso = await _resolverAlertaApi(sku, motivo);
+                        if (sucesso) {
+                          setState(() => _localSkus.removeAt(index));
+                          widget.onRefreshData(); // Recalcula os números do Menu
+                          return true; // Deixa o card sumir da tela
+                        }
+                      }
+                      return false; // Se cancelar ou der erro, o card volta pro lugar
+                    },
                     background: Container(
                       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
                       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -134,8 +189,7 @@ class _CriticalItemsScreenState extends State<CriticalItemsScreen> {
   }
 
   Widget _buildCriticalCard(BuildContext context, Sku sku) {
-    // Busca a unidade de medida ou deixa vazio caso não encontre
-    final unidadeText = sku.unidadeMedida != null ? ' ${sku.unidadeMedida!.toLowerCase()}' : '';
+    final unidadeText = sku.unidadeMedida != null ? ' ${sku.unidadeMedida!.toLowerCase()}' : ' un';
     
     return Card(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -168,7 +222,7 @@ class _CriticalItemsScreenState extends State<CriticalItemsScreen> {
                   Row(children: [
                     const Icon(Icons.crisis_alert, size: 14, color: AppColors.textSecondary),
                     const SizedBox(width: 4),
-                    Text('Volume Retido: ${sku.qtdDisponivelVenda}$unidadeText', style: GoogleFonts.poppins(fontSize: AppFontSizes.caption, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
+                    Text('Volume Retido: ${sku.formatarQuantidade(sku.qtdDisponivelVenda)}$unidadeText', style: GoogleFonts.poppins(fontSize: AppFontSizes.caption, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
                   ]),
                 ]),
               ),
