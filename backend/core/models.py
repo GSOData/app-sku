@@ -287,34 +287,20 @@ class ConfiguracaoAlerta(BaseModel):
             raise ValidationError(errors)
 
 class LancamentoCriticoManual(BaseModel):
-    """
-    Registros de criticidade inseridos manualmente pela Controladoria.
-    Este fluxo é 100% gerenciado e não sofre interferência dos uploads.
-    """
-    STATUS_CHOICES = [
-        ('BLOQUEADO', 'Bloqueado'),
-        ('PRE_BLOQUEIO', 'Pré-Bloqueio'),
-        ('RISCO_VENCIMENTO', 'Risco de Vencimento'),
+    ORIGEM_CHOICES = [
+        ('APP', 'Aplicativo'),
+        ('PLANILHA', 'Planilha Importada'),
     ]
 
-    sku = models.ForeignKey(
-        'SKU',
-        on_delete=models.CASCADE,
-        related_name='lancamentos_manuais',
-        verbose_name='Produto (SKU)'
-    )
-    unidade_negocio = models.ForeignKey(
-        'UnidadeNegocio',
-        on_delete=models.CASCADE,
-        related_name='lancamentos_criticos',
-        verbose_name='Unidade de Negócio'
-    )
-    quantidade_critica = models.IntegerField(
-        verbose_name='Quantidade Crítica'
-    )
-    data_validade = models.DateField(
-        verbose_name='Data de Validade'
-    )
+    sku = models.ForeignKey('SKU', on_delete=models.CASCADE, related_name='lancamentos_criticos')
+    unidade_negocio = models.ForeignKey('UnidadeNegocio', on_delete=models.CASCADE, related_name='lancamentos_criticos')
+    quantidade_critica = models.IntegerField(verbose_name='Quantidade Crítica Retida')
+    data_validade = models.DateField(verbose_name='Data de Validade (Crítica)')
+    
+    # === NOVOS CAMPOS: ORIGEM E RECEBIMENTO ===
+    origem = models.CharField(max_length=15, choices=ORIGEM_CHOICES, default='APP', verbose_name='Origem do Lançamento')
+    data_recebimento = models.DateField(null=True, blank=True, verbose_name='Data de Recebimento')
+
     usuario_lancamento = models.ForeignKey(
         'Usuario',
         on_delete=models.SET_NULL,
@@ -322,18 +308,10 @@ class LancamentoCriticoManual(BaseModel):
         related_name='meus_lancamentos_criticos',
         verbose_name='Lançado por'
     )
-    # === NOVOS CAMPOS PARA AUDITORIA DE RESOLUÇÃO (SOFT DELETE) ===
-    motivo_resolucao = models.CharField(
-        max_length=100, 
-        null=True, 
-        blank=True, 
-        verbose_name='Motivo da Baixa'
-    )
-    data_resolucao = models.DateTimeField(
-        null=True, 
-        blank=True, 
-        verbose_name='Data de Resolução'
-    )
+    
+    # === AUDITORIA DE RESOLUÇÃO (SOFT DELETE) ===
+    motivo_resolucao = models.CharField(max_length=100, null=True, blank=True, verbose_name='Motivo da Baixa')
+    data_resolucao = models.DateTimeField(null=True, blank=True, verbose_name='Data de Resolução')
     usuario_resolucao = models.ForeignKey(
         'Usuario', 
         on_delete=models.SET_NULL, 
@@ -344,12 +322,12 @@ class LancamentoCriticoManual(BaseModel):
     )
 
     class Meta:
-        verbose_name = 'Lançamento Crítico Manual'
-        verbose_name_plural = 'Lançamentos Críticos Manuais'
-        ordering = ['-created_at']
+        verbose_name = 'Lançamento Crítico'
+        verbose_name_plural = 'Lançamentos Críticos'
+        ordering = ['data_validade']
 
     def __str__(self):
-        return f"{self.sku.nome_produto} - {self.quantidade_critica} cx ({self.data_validade})"
+        return f"{self.sku.codigo_sku} - {self.quantidade_critica} ({self.origem})"
 
 
 class SKU(BaseModel):

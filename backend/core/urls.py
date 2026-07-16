@@ -38,6 +38,7 @@ from .views import (
     UploadEstoqueView,
     NotificacoesAlertaView,
     MeusMenusView,
+    UploadPlanilhaCriticosView,
 )
 
 app_name = 'core'
@@ -75,8 +76,11 @@ urlpatterns = [
     # Upload de arquivos
     path('upload/grade-020502/', UploadEstoqueView.as_view(), name='upload-grade'),
 
-    # Menus Dinâmicos (RBAC)  <--- NOVA ROTA REGISTRADA AQUI
+    # Menus Dinâmicos (RBAC)
     path('menus/meus-menus/', MeusMenusView.as_view(), name='meus-menus'),
+
+    # Upload de Planilha de Criticidade
+    path('upload-criticos/', UploadPlanilhaCriticosView.as_view(), name='upload_criticos'),
 
     # ViewSets (router)
     path('', include(router.urls)),

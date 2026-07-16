@@ -8,6 +8,10 @@ Implementa:
 - Controle de acesso por unidade
 """
 
+import pandas as pd
+from django.db import transaction
+from rest_framework.parsers import MultiPartParser, FormParser
+
 from django.utils import timezone
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
@@ -967,7 +971,7 @@ class RelatorioCriticidadeView(UnidadeAccessMixin, APIView):
                 status_color = '#FFC107'
                 categoria_destino = 'PRE_BLOQUEIO'
 
-            # AQUI ESTÁ A CORREÇÃO DO CELULAR: Injetamos campos zerados para satisfazer o Flutter!
+            # Injetamos campos zerados para satisfazer o Flutter!
             sku_data = {
                 'id': item.id,  # ID do Lancamento
                 'codigo_sku': item.sku.codigo_sku,
@@ -975,8 +979,8 @@ class RelatorioCriticidadeView(UnidadeAccessMixin, APIView):
                 'categoria': item.sku.categoria,
                 'unidade_medida': item.sku.unidade_medida,
                 'fator_conversao': item.sku.fator_conversao,
-                'qtd_total_020502': 0,  # <-- O Celular quebrava aqui!
-                'qtd_buffer_020304': 0, # <-- E aqui!
+                'qtd_total_020502': 0,
+                'qtd_buffer_020304': 0,
                 'qtd_disponivel_venda': item.quantidade_critica, 
                 'validade_inicio_range': item.data_validade.strftime('%Y-%m-%d'),
                 'validade_fim_range': item.data_validade.strftime('%Y-%m-%d'),
@@ -1081,11 +1085,146 @@ class NotificacoesAlertaView(UnidadeAccessMixin, APIView):
             'total': len(notificacoes),
         }
         
-        # AQUI ESTÁ A CORREÇÃO DO SININHO: Enviamos o dicionário puro, fugindo da censura do Serializer
+        # Enviamos o dicionário puro, fugindo da censura do Serializer
         return Response({
             'resumo': resumo,
             'notificacoes': notificacoes, 
         })
+
+
+# =============================================================================
+# UPLOAD DE PLANILHA DE ITENS CRÍTICOS (AUTOMATIZADO)
+# =============================================================================
+class UploadPlanilhaCriticosView(APIView):
+    """
+    POST /api/upload-criticos/
+    Recebe a planilha, faz a varredura atômica linha a linha e aplica o Ground Zero.
+    """
+    permission_classes = [IsAuthenticated, IsControle]
+    parser_classes = (MultiPartParser, FormParser)
+
+    def post(self, request):
+        arquivo = request.FILES.get('file')
+        unidade_id = request.data.get('unidade_id')
+
+        if not arquivo or not unidade_id:
+            return Response({'error': 'Arquivo de planilha e Unidade são obrigatórios.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            unidade = UnidadeNegocio.objects.get(id=unidade_id, ativo=True)
+        except UnidadeNegocio.DoesNotExist:
+            return Response({'error': 'Unidade de Negócio não encontrada.'}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            # Lê o Excel para a memória
+            df = pd.read_excel(arquivo)
+            
+            # Validação dos cabeçalhos exigidos
+            colunas_esperadas = ['Cod produto', 'Qtd', 'Data Vencto', 'Data Recebimento']
+            colunas_planilha = [str(col).strip() for col in df.columns]
+            
+            for col in colunas_esperadas:
+                if col not in colunas_planilha:
+                    return Response({'error': f'A coluna obrigatória "{col}" não foi encontrada na planilha.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            erros = []
+            novos_lancamentos = []
+            
+            # BLOCO ATÔMICO: Ou tudo dá certo, ou tudo é cancelado (Rollback)
+            with transaction.atomic():
+                # 1. Varredura Linha a Linha
+                for index, row in df.iterrows():
+                    linha_real = index + 2 # +2 porque o cabeçalho é a linha 1 do Excel
+                    
+                    cod_produto = str(row.get('Cod produto', '')).strip()
+                    if pd.isna(row.get('Cod produto')) or not cod_produto:
+                        continue # Pula linhas vazias
+                        
+                    qtd = row.get('Qtd')
+                    dt_venc = row.get('Data Vencto')
+                    dt_rec = row.get('Data Recebimento')
+
+                    # Validações rígidas
+                    sku = SKU.objects.filter(codigo_sku=cod_produto, unidade_negocio=unidade, ativo=True).first()
+                    if not sku:
+                        erros.append(f"Linha {linha_real}: SKU {cod_produto} não encontrado nesta unidade.")
+                        continue
+                        
+                    try:
+                        qtd_int = int(qtd)
+                        if qtd_int <= 0: raise ValueError
+                    except (ValueError, TypeError):
+                        erros.append(f"Linha {linha_real}: Quantidade inválida.")
+                        continue
+
+                    try:
+                        # Converte a data do pandas para data do python
+                        dt_venc_obj = pd.to_datetime(dt_venc).date()
+                    except Exception:
+                        erros.append(f"Linha {linha_real}: Data de Vencimento com formato inválido.")
+                        continue
+                        
+                    dt_rec_obj = None
+                    if pd.notna(dt_rec):
+                        try:
+                            dt_rec_obj = pd.to_datetime(dt_rec).date()
+                        except Exception:
+                            erros.append(f"Linha {linha_real}: Data de Recebimento com formato inválido.")
+                            continue
+
+                    # Prepara o objeto na memória (ainda não salvamos no banco)
+                    novos_lancamentos.append(
+                        LancamentoCriticoManual(
+                            sku=sku,
+                            unidade_negocio=unidade,
+                            quantidade_critica=qtd_int,
+                            data_validade=dt_venc_obj,
+                            origem='PLANILHA',
+                            data_recebimento=dt_rec_obj,
+                            usuario_lancamento=request.user,
+                            ativo=True
+                        )
+                    )
+
+                # 2. O Veredito de Erros
+                if erros:
+                    # O transaction.atomic() garante que NADA foi salvo se chegarmos aqui
+                    raise ValueError("Erros de validação")
+
+                # 3. A regra da FOTOGRAFIA (Sobrescrita / Ground Zero)
+                lancamentos_antigos = LancamentoCriticoManual.objects.filter(
+                    unidade_negocio=unidade, 
+                    ativo=True
+                )
+                lancamentos_antigos.update(
+                    ativo=False,
+                    motivo_resolucao='Sobrescrito por Upload de Planilha',
+                    data_resolucao=timezone.now(),
+                    usuario_resolucao=request.user
+                )
+
+                # 4. Salva a nova leva de uma vez só
+                LancamentoCriticoManual.objects.bulk_create(novos_lancamentos)
+
+                # Auditoria geral
+                log_consulta(
+                    usuario=request.user, 
+                    tipo='UPLOAD_CRITICOS', 
+                    parametros={'unidade_id': unidade.id, 'qtd_linhas': len(novos_lancamentos)}, 
+                    request=request
+                )
+
+            return Response({
+                'status': 'Upload concluído com sucesso.',
+                'linhas_processadas': len(novos_lancamentos)
+            }, status=status.HTTP_201_CREATED)
+
+        except ValueError as e:
+            if str(e) == "Erros de validação":
+                return Response({'error': 'A importação foi abortada.', 'detalhes': erros}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Erro no processamento dos dados.'}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({'error': f'Erro inesperado na leitura da planilha: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # =============================================================================
