@@ -28,7 +28,7 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
   // Estados globais
   bool _isLoadingUnidades = true;
   bool _isUploadingFefo = false;
-  bool _isUploadingCriticos = false; // Estado pro novo upload
+  bool _isUploadingCriticos = false;
   bool _isLoadingHistory = false;
 
   // Unidades
@@ -116,17 +116,20 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
         children: [
           _buildUnidadeSelector(),
           const SizedBox(height: AppSpacing.xl),
-          // Painel duplo (lado a lado se tiver tela grande, ou um embaixo do outro)
+          
+          // Layout lado a lado em telas grandes ou empilhado em telas menores
           LayoutBuilder(
             builder: (context, constraints) {
               if (constraints.maxWidth > 800) {
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: _buildFefoUploadSection()),
-                    const SizedBox(width: AppSpacing.xl),
-                    Expanded(child: _buildCriticosUploadSection()),
-                  ],
+                return IntrinsicHeight( // MÁGICA: Iguala a altura dos cards
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: _buildFefoUploadSection()),
+                      const SizedBox(width: AppSpacing.xl),
+                      Expanded(child: _buildCriticosUploadSection()),
+                    ],
+                  ),
                 );
               }
               return Column(
@@ -138,6 +141,7 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
               );
             },
           ),
+
           const SizedBox(height: AppSpacing.xl),
           _buildInstructions(),
           const SizedBox(height: AppSpacing.xl),
@@ -213,8 +217,16 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
   // -----------------------------------------------------------------------
 
   Widget _buildFefoUploadSection() {
-    final bool todosArquivosSelecionados = _arquivo020502 != null && _arquivo020304 != null && _arquivoNri != null;
+    final int selecionados = [_arquivo020502, _arquivo020304, _arquivoNri].where((a) => a != null).length;
+    final bool todosArquivosSelecionados = selecionados == 3;
     final bool podeProcesar = _selectedUnidade != null && todosArquivosSelecionados && !_isUploadingFefo && !_isUploadingCriticos;
+
+    String hint = '';
+    if (_selectedUnidade == null) {
+      hint = 'Selecione a unidade de negócio.';
+    } else if (!todosArquivosSelecionados) {
+      hint = 'Selecione as 3 planilhas.';
+    }
 
     return Card(
       elevation: 0,
@@ -222,53 +234,65 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.lg),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween, // Empurra o botão pro rodapé
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.sm),
-                  decoration: BoxDecoration(color: AppColors.primary.withAlpha(26), borderRadius: BorderRadius.circular(AppRadius.sm)),
-                  child: Icon(Icons.auto_awesome, color: AppColors.primary, size: 22),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(AppSpacing.sm),
+                      decoration: BoxDecoration(color: AppColors.primary.withAlpha(26), borderRadius: BorderRadius.circular(AppRadius.sm)),
+                      child: Icon(Icons.auto_awesome, color: AppColors.primary, size: 22),
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Processamento FEFO', style: GoogleFonts.poppins(fontSize: AppFontSizes.subtitle, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                          Text('Selecione as 3 planilhas para atualizar o Estoque Geral', style: GoogleFonts.poppins(fontSize: AppFontSizes.caption, color: AppColors.textSecondary)),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Processamento FEFO', style: GoogleFonts.poppins(fontSize: AppFontSizes.subtitle, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                      Text('Selecione as 3 planilhas para atualizar o Estoque Geral', style: GoogleFonts.poppins(fontSize: AppFontSizes.caption, color: AppColors.textSecondary)),
-                    ],
-                  ),
+                const SizedBox(height: AppSpacing.xl),
+                _buildProgressIndicator(3, selecionados),
+                const SizedBox(height: AppSpacing.xl),
+                _buildFilePicker(
+                  label: 'Grade 020502', sublabel: 'Estoque Total Diário', icon: Icons.inventory_2_outlined, color: AppColors.primary,
+                  arquivo: _arquivo020502, onSelect: () => _selectFile('020502'), onClear: () => setState(() => _arquivo020502 = null),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                _buildFilePicker(
+                  label: 'Grade 020304', sublabel: 'Buffer de Segurança', icon: Icons.safety_check_outlined, color: AppColors.info,
+                  arquivo: _arquivo020304, onSelect: () => _selectFile('020304'), onClear: () => setState(() => _arquivo020304 = null),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                _buildFilePicker(
+                  label: 'Planilha NRI', sublabel: 'Não-Regular de Inventário', icon: Icons.description_outlined, color: AppColors.warning,
+                  arquivo: _arquivoNri, onSelect: () => _selectFile('nri'), onClear: () => setState(() => _arquivoNri = null),
                 ),
               ],
             ),
+            
             const SizedBox(height: AppSpacing.xl),
-            _buildProgressIndicator(3, [_arquivo020502, _arquivo020304, _arquivoNri].where((a) => a != null).length),
-            const SizedBox(height: AppSpacing.xl),
-            _buildFilePicker(
-              label: 'Grade 020502', sublabel: 'Estoque Total Diário', icon: Icons.inventory_2_outlined, color: AppColors.primary,
-              arquivo: _arquivo020502, onSelect: () => _selectFile('020502'), onClear: () => setState(() => _arquivo020502 = null),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            _buildFilePicker(
-              label: 'Grade 020304', sublabel: 'Buffer de Segurança', icon: Icons.safety_check_outlined, color: AppColors.info,
-              arquivo: _arquivo020304, onSelect: () => _selectFile('020304'), onClear: () => setState(() => _arquivo020304 = null),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            _buildFilePicker(
-              label: 'Planilha NRI', sublabel: 'Não-Regular de Inventário', icon: Icons.description_outlined, color: AppColors.warning,
-              arquivo: _arquivoNri, onSelect: () => _selectFile('nri'), onClear: () => setState(() => _arquivoNri = null),
-            ),
-            const SizedBox(height: AppSpacing.xl),
+            
             if (_isUploadingFefo)
-              _buildUploadProgress('Processando estoque FEFO...')
+              _buildUploadProgress('Processando estoque FEFO...', [
+                _arquivo020502?.nome ?? '',
+                _arquivo020304?.nome ?? '',
+                _arquivoNri?.nome ?? '',
+              ].where((n) => n.isNotEmpty).join(' • '))
             else
               _buildProcessarButton(
                 label: 'Processar Estoque FEFO',
                 icon: Icons.bolt,
                 enabled: podeProcesar,
-                hint: _selectedUnidade == null ? 'Selecione a unidade primeiro.' : (!todosArquivosSelecionados ? 'Selecione as 3 planilhas.' : ''),
+                hint: hint,
                 onPressed: _performUploadFefo,
               ),
           ],
@@ -278,12 +302,19 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
   }
 
   // -----------------------------------------------------------------------
-  // NOVO: Formulário CRÍTICOS (1 planilha)
+  // Formulário CRÍTICOS (1 planilha)
   // -----------------------------------------------------------------------
 
   Widget _buildCriticosUploadSection() {
     final bool selecionado = _arquivoCriticos != null;
     final bool podeProcesar = _selectedUnidade != null && selecionado && !_isUploadingFefo && !_isUploadingCriticos;
+
+    String hint = '';
+    if (_selectedUnidade == null) {
+      hint = 'Selecione a unidade de negócio.';
+    } else if (!selecionado) {
+      hint = 'Selecione a planilha de críticos.';
+    }
 
     return Card(
       elevation: 0,
@@ -291,67 +322,72 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.lg),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween, // Empurra o botão pro rodapé
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.sm),
-                  decoration: BoxDecoration(color: AppColors.error.withAlpha(26), borderRadius: BorderRadius.circular(AppRadius.sm)),
-                  child: Icon(Icons.crisis_alert, color: AppColors.error, size: 22),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(AppSpacing.sm),
+                      decoration: BoxDecoration(color: AppColors.error.withAlpha(26), borderRadius: BorderRadius.circular(AppRadius.sm)),
+                      child: Icon(Icons.crisis_alert, color: AppColors.error, size: 22),
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Importação de Itens Críticos', style: GoogleFonts.poppins(fontSize: AppFontSizes.subtitle, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                          Text('Envie a planilha de apontamento manual', style: GoogleFonts.poppins(fontSize: AppFontSizes.caption, color: AppColors.textSecondary)),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: Column(
+                const SizedBox(height: AppSpacing.xl),
+                _buildProgressIndicator(1, selecionado ? 1 : 0),
+                const SizedBox(height: AppSpacing.xl),
+                _buildFilePicker(
+                  label: 'Planilha de Críticos', sublabel: 'Formato: Cod, Qtd, Vencto...', icon: Icons.table_view_outlined, color: AppColors.error,
+                  arquivo: _arquivoCriticos, onSelect: () => _selectFile('criticos'), onClear: () => setState(() => _arquivoCriticos = null),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                
+                // Área de aviso de Ground Zero
+                Container(
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(AppRadius.sm), border: Border.all(color: AppColors.error.withAlpha(50))),
+                  child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Importação de Itens Críticos', style: GoogleFonts.poppins(fontSize: AppFontSizes.subtitle, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                      Text('Envie a planilha de apontamento manual', style: GoogleFonts.poppins(fontSize: AppFontSizes.caption, color: AppColors.textSecondary)),
+                      Icon(Icons.info, color: AppColors.error, size: 16),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Esta importação sobrescreve todos os lançamentos críticos anteriores da filial (Fotografia).',
+                          style: GoogleFonts.poppins(fontSize: AppFontSizes.caption, color: AppColors.textSecondary),
+                        ),
+                      ),
                     ],
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: AppSpacing.xl),
-            _buildProgressIndicator(1, selecionado ? 1 : 0),
-            const SizedBox(height: AppSpacing.xl),
-            _buildFilePicker(
-              label: 'Planilha de Críticos', sublabel: 'Formato: Cod, Qtd, Vencto...', icon: Icons.table_view_outlined, color: AppColors.error,
-              arquivo: _arquivoCriticos, onSelect: () => _selectFile('criticos'), onClear: () => setState(() => _arquivoCriticos = null),
-            ),
-            const SizedBox(height: AppSpacing.md),
             
-            // Área de aviso de Ground Zero
-            Container(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(AppRadius.sm), border: Border.all(color: AppColors.error.withAlpha(50))),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.info, color: AppColors.error, size: 16),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Esta importação sobrescreve todos os lançamentos críticos anteriores da filial (Fotografia).',
-                      style: GoogleFonts.poppins(fontSize: AppFontSizes.caption, color: AppColors.textSecondary),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            
-            const Spacer(),
             const SizedBox(height: AppSpacing.xl),
 
             if (_isUploadingCriticos)
-              _buildUploadProgress('Processando itens críticos...')
+              _buildUploadProgress('Processando itens críticos...', _arquivoCriticos?.nome ?? '')
             else
               _buildProcessarButton(
                 label: 'Importar Críticos',
                 icon: Icons.upload,
                 color: AppColors.error,
                 enabled: podeProcesar,
-                hint: _selectedUnidade == null ? 'Selecione a unidade primeiro.' : (!selecionado ? 'Selecione a planilha.' : ''),
+                hint: hint,
                 onPressed: _performUploadCriticos,
               ),
           ],
@@ -451,7 +487,7 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
     );
   }
 
-  Widget _buildUploadProgress(String texto) {
+  Widget _buildUploadProgress(String titulo, String subtitulo) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(AppRadius.md), border: Border.all(color: AppColors.divider)),
@@ -459,7 +495,15 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
         children: [
           const SizedBox(width: 30, height: 30, child: CircularProgressIndicator(strokeWidth: 3)),
           const SizedBox(width: AppSpacing.lg),
-          Expanded(child: Text(texto, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: AppColors.textPrimary))),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(titulo, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                Text(subtitulo, style: GoogleFonts.poppins(fontSize: AppFontSizes.caption, color: AppColors.textSecondary), maxLines: 2, overflow: TextOverflow.ellipsis),
+              ]
+            ),
+          ),
         ],
       ),
     );
@@ -674,14 +718,12 @@ class _WebUploadScreenState extends State<WebUploadScreen> {
       
       setState(() {
         _isUploadingCriticos = false;
-        if (result.success) _arquivoCriticos = null; // Limpa ao finalizar
+        if (result.success) _arquivoCriticos = null; 
       });
 
       if (result.success) {
-        // Exibimos um diálogo de Sucesso pois limpar a tela apenas com SnackBar pode não ser visualmente satisfatório para planilhas de críticos
         _showSuccess('Importação concluída! ${result.skusAtualizados} itens críticos atualizados.');
       } else {
-        // Se a importação falhar por dados incorretos, mostrará o erro na tela (incluindo as linhas com defeito)
         _showErrorDialog('Falha na Importação', result.errorMessage ?? 'Verifique a formatação da sua planilha.');
       }
       _loadUploadHistory();
