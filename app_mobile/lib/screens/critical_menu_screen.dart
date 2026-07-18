@@ -84,6 +84,8 @@ class _CriticalMenuScreenState extends State<CriticalMenuScreen> {
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context);
     final canManage = authService.usuario?.isControle == true || authService.usuario?.isAdmin == true;
+    
+    // Identifica se estamos na web ou se há telas na pilha de navegação
     final showBackButton = kIsWeb || Navigator.canPop(context);
 
     return Scaffold(
@@ -93,6 +95,22 @@ class _CriticalMenuScreenState extends State<CriticalMenuScreen> {
         backgroundColor: AppColors.error,
         foregroundColor: Colors.white,
         elevation: 0,
+        // CORREÇÃO: Força a exibição da seta de voltar
+        leading: showBackButton
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () {
+                  if (Navigator.canPop(context)) {
+                    Navigator.pop(context);
+                  } else {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (_) => const WebDashboardScreen()),
+                    );
+                  }
+                },
+              )
+            : null,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: AppColors.error))
@@ -203,7 +221,7 @@ class _AddCriticalFormModalState extends State<_AddCriticalFormModal> {
   int? _foundSkuId;
   String? _skuNome;
   String? _skuCategoria;
-  String? _skuUnidadeMedida; // Variável nova para guardar cx, un, dz
+  String? _skuUnidadeMedida;
   DateTime? _selectedDate;
 
   Future<void> _buscarSku() async {
@@ -226,7 +244,7 @@ class _AddCriticalFormModalState extends State<_AddCriticalFormModal> {
           _foundSkuId = data['id'];
           _skuNome = data['nome_produto'];
           _skuCategoria = data['categoria'];
-          _skuUnidadeMedida = data['unidade_medida']; // Lendo a unidade de medida do backend
+          _skuUnidadeMedida = data['unidade_medida'];
         });
       } else {
         _showSnackBar('Produto não localizado no estoque.', AppColors.error);
@@ -287,7 +305,6 @@ class _AddCriticalFormModalState extends State<_AddCriticalFormModal> {
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context, listen: false);
     
-    // Formata a unidade de medida para o label do input
     final labelUnidade = _skuUnidadeMedida != null ? _skuUnidadeMedida!.toLowerCase() : 'cx/un';
 
     return Padding(
@@ -318,7 +335,6 @@ class _AddCriticalFormModalState extends State<_AddCriticalFormModal> {
               ]),
             ),
             const SizedBox(height: AppSpacing.md),
-            // Campo de quantidade atualizado para mostrar a unidade dinâmica!
             TextField(controller: _qtdController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Quantidade Crítica ($labelUnidade)', border: const OutlineInputBorder())),
             const SizedBox(height: AppSpacing.md),
             SizedBox(
