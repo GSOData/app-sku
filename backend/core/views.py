@@ -1130,21 +1130,18 @@ class UploadPlanilhaCriticosView(APIView):
             erros = []
             novos_lancamentos = []
             
-            # BLOCO ATÔMICO: Ou tudo dá certo, ou tudo é cancelado (Rollback)
             with transaction.atomic():
-                # 1. Varredura Linha a Linha
                 for index, row in df.iterrows():
-                    linha_real = index + 2 # +2 porque o cabeçalho é a linha 1 do Excel
+                    linha_real = index + 2 
                     
                     cod_produto = str(row.get('Cod produto', '')).strip()
                     if pd.isna(row.get('Cod produto')) or not cod_produto:
-                        continue # Pula linhas vazias
+                        continue 
                         
                     qtd = row.get('Qtd')
                     dt_venc = row.get('Data Vencto')
                     dt_rec = row.get('Data Recebimento')
 
-                    # Validações rígidas
                     sku = SKU.objects.filter(codigo_sku=cod_produto, unidade_negocio=unidade, ativo=True).first()
                     if not sku:
                         erros.append(f"Linha {linha_real}: SKU {cod_produto} não encontrado nesta unidade.")
@@ -1158,8 +1155,8 @@ class UploadPlanilhaCriticosView(APIView):
                         continue
 
                     try:
-                        # Converte a data do pandas para data do python
-                        dt_venc_obj = pd.to_datetime(dt_venc).date()
+                        # CORREÇÃO DA DATA: Forçando a leitura no padrão Brasileiro (Dia/Mês/Ano)
+                        dt_venc_obj = pd.to_datetime(dt_venc, dayfirst=True).date()
                     except Exception:
                         erros.append(f"Linha {linha_real}: Data de Vencimento com formato inválido.")
                         continue
@@ -1167,12 +1164,11 @@ class UploadPlanilhaCriticosView(APIView):
                     dt_rec_obj = None
                     if pd.notna(dt_rec):
                         try:
-                            dt_rec_obj = pd.to_datetime(dt_rec).date()
+                            dt_rec_obj = pd.to_datetime(dt_rec, dayfirst=True).date()
                         except Exception:
                             erros.append(f"Linha {linha_real}: Data de Recebimento com formato inválido.")
                             continue
 
-                    # Prepara o objeto na memória (ainda não salvamos no banco)
                     novos_lancamentos.append(
                         LancamentoCriticoManual(
                             sku=sku,
@@ -1186,12 +1182,9 @@ class UploadPlanilhaCriticosView(APIView):
                         )
                     )
 
-                # 2. O Veredito de Erros
                 if erros:
-                    # O transaction.atomic() garante que NADA foi salvo se chegarmos aqui
                     raise ValueError("Erros de validação")
 
-                # 3. A regra da FOTOGRAFIA (Sobrescrita / Ground Zero)
                 lancamentos_antigos = LancamentoCriticoManual.objects.filter(
                     unidade_negocio=unidade, 
                     ativo=True
@@ -1203,10 +1196,8 @@ class UploadPlanilhaCriticosView(APIView):
                     usuario_resolucao=request.user
                 )
 
-                # 4. Salva a nova leva de uma vez só
                 LancamentoCriticoManual.objects.bulk_create(novos_lancamentos)
 
-                # Auditoria geral
                 log_consulta(
                     usuario=request.user, 
                     tipo='UPLOAD_CRITICOS', 
@@ -1215,6 +1206,7 @@ class UploadPlanilhaCriticosView(APIView):
                 )
 
             return Response({
+                'success': True, # <--- A MÁGICA ESTÁ AQUI: O Flutter agora vai reconhecer o sucesso!
                 'status': 'Upload concluído com sucesso.',
                 'linhas_processadas': len(novos_lancamentos)
             }, status=status.HTTP_201_CREATED)
