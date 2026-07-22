@@ -88,7 +88,7 @@ class _CriticalItemsScreenState extends State<CriticalItemsScreen> {
     );
   }
 
-  // --- NOVO: Chama o endpoint POST /resolver/ ---
+  // --- Chama o endpoint POST /resolver/ com tratamento de erro visual ---
   Future<bool> _resolverAlertaApi(Sku sku, String motivo) async {
     try {
       final authService = Provider.of<AuthService>(context, listen: false);
@@ -108,8 +108,15 @@ class _CriticalItemsScreenState extends State<CriticalItemsScreen> {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Alerta resolvido e registrado no histórico!'), backgroundColor: AppColors.success));
         }
         return true;
+      } else {
+        // NOVO: Lê a resposta do servidor e exibe em caso de falha (ex: 403)
+        if (mounted) {
+          final errorBody = jsonDecode(response.body);
+          final errorMessage = errorBody['error'] ?? errorBody['detail'] ?? 'Erro ${response.statusCode} ao resolver.';
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMessage), backgroundColor: AppColors.error));
+        }
+        return false;
       }
-      return false;
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Falha ao comunicar com o servidor.'), backgroundColor: AppColors.error));

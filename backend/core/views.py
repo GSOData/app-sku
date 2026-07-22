@@ -441,34 +441,47 @@ class LancamentoCriticoManualViewSet(viewsets.ModelViewSet):
     CRUD para a equipe de Controle lançar e gerenciar lotes críticos manualmente.
     """
     serializer_class = LancamentoCriticoManualSerializer
-    permission_classes = [IsAuthenticated, IsControle]
+    # CORREÇÃO 1: Removido o IsControle daqui para não dar 403 no POST
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         unidade_id = self.request.query_params.get('unidade_id')
+        qs = LancamentoCriticoManual.objects.filter(ativo=True)
         if unidade_id:
-            return LancamentoCriticoManual.objects.filter(ativo=True, unidade_negocio_id=unidade_id)
-        return LancamentoCriticoManual.objects.filter(ativo=True)
+            qs = qs.filter(unidade_negocio_id=unidade_id)
+        
+        # Filtra para o usuário só ver lançamentos das lojas que tem acesso
+        if not self.request.user.is_superuser:
+            unidades_ids = self.request.user.get_unidades_ids()
+            qs = qs.filter(unidade_negocio_id__in=unidades_ids)
+        return qs
 
     def perform_create(self, serializer):
         serializer.save(usuario_lancamento=self.request.user)
 
-    # 1. BLOQUEAMOS O DELETE REAL (Ninguém apaga o histórico do banco)
     def destroy(self, request, *args, **kwargs):
         return Response(
             {'detail': 'A exclusão direta foi desativada por motivos de auditoria. Use a ação de resolução.'}, 
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
-    # 2. CRIAMOS A ROTA CUSTOMIZADA DE RESOLUÇÃO (Soft Delete)
     @action(detail=True, methods=['post'])
     def resolver(self, request, pk=None):
         lancamento = self.get_object()
-        motivo = request.data.get('motivo')
         
+        # CORREÇÃO 2: Validação manual de permissão blindada
+        if not request.user.is_superuser:
+            if not request.user.tem_acesso_unidade(lancamento.unidade_negocio_id):
+                return Response({'error': 'Você não tem permissão nesta unidade.'}, status=status.HTTP_403_FORBIDDEN)
+            
+            papel = request.user.get_papel_unidade(lancamento.unidade_negocio_id)
+            if papel == 'VENDEDOR':
+                return Response({'error': 'Vendedores não podem baixar alertas.'}, status=status.HTTP_403_FORBIDDEN)
+
+        motivo = request.data.get('motivo')
         if not motivo:
             return Response({'error': 'O motivo da baixa é obrigatório.'}, status=status.HTTP_400_BAD_REQUEST)
             
-        # Oculta do sistema e grava a auditoria
         lancamento.ativo = False 
         lancamento.motivo_resolucao = motivo
         lancamento.data_resolucao = timezone.now()
@@ -1100,7 +1113,7 @@ class UploadPlanilhaCriticosView(APIView):
     POST /api/upload-criticos/
     Recebe a planilha, faz a varredura atômica linha a linha e aplica o Ground Zero.
     """
-    permission_classes = [IsAuthenticated, IsControle]
+    permission_classes = [IsAuthenticated, CanManageUpload]
     parser_classes = (MultiPartParser, FormParser)
 
     def post(self, request):
@@ -1114,6 +1127,10 @@ class UploadPlanilhaCriticosView(APIView):
             unidade = UnidadeNegocio.objects.get(id=unidade_id, ativo=True)
         except UnidadeNegocio.DoesNotExist:
             return Response({'error': 'Unidade de Negócio não encontrada.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if not request.user.is_superuser:
+            if not request.user.tem_acesso_unidade(unidade.id):
+                return Response({'error': 'Sem permissão para importar nesta unidade.'}, status=status.HTTP_403_FORBIDDEN)
 
         try:
             # Lê o Excel para a memória
