@@ -173,24 +173,39 @@ class CanReadSKU(BasePermission):
 
 class CanManageUpload(BasePermission):
     """
-    Permissão para uploads (estoque, contagens).
-    Apenas GERENTE pode fazer upload na sua unidade.
+    Permissão para uploads (estoque, contagens e críticos).
+    Apenas a equipe de CONTROLE (e Admin) pode fazer upload na sua unidade.
     """
-    message = "Apenas gerentes podem realizar uploads de dados."
+    message = "Apenas a equipe de Controle pode realizar uploads de dados."
 
     def has_permission(self, request, view):
         if not request.user.is_authenticated:
             return False
         
+        # O Admin (Superuser) sempre passa direto por aqui:
         if request.user.is_superuser:
             return True
         
-        unidade_id = get_unidade_from_request(request)
+        # Tenta pegar a unidade do corpo do formulário (Críticos) ou da URL (FEFO)
+        unidade_id = request.data.get('unidade_id') or request.query_params.get('unidade_id')
+        
+        # Fallback de segurança para a sua função antiga, caso precise
+        if not unidade_id:
+            try:
+                unidade_id = get_unidade_from_request(request)
+            except Exception:
+                pass
+            
         if not unidade_id:
             return False
         
-        papel = request.user.get_papel_unidade(unidade_id)
-        return papel == 'GERENTE'
+        try:
+            papel = request.user.get_papel_unidade(int(unidade_id))
+        except (ValueError, TypeError):
+            return False
+            
+        # A regra de negócio definitiva:
+        return papel == 'CONTROLE'
 
 
 class ObjectBelongsToUserUnit(BasePermission):
