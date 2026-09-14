@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 class Constants {
   /// URL base da API
-  static const String apiUrl = 'http://31.97.83.219/api/';
+  static const String apiUrl = 'https://api.sku.revalle.com.br/api/';
 }
 
 /// Chaves para SharedPreferences
