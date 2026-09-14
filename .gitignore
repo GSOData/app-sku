@@ -1,0 +1,23 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# Variáveis e segredos
+.env
+.env.*
+!.env.example
+backend/.env
+
+# Django
+backend/staticfiles/
+backend/media/
+
+# Flutter / Android
+app_mobile/android/.kotlin/errors/
+*.log
+
+# Sistema / IDE
+.DS_Store
+Thumbs.db
